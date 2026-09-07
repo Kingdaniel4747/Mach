@@ -139,7 +139,7 @@ jobs:
 
       # Secrets werden nur diesem Schritt bereitgestellt, niemals einem PR-Build.
       # Kein Keystore im Repository, im Cache oder in den Download-Artefakten.
-      - name: Release-APK mit privatem Schlüssel bauen
+      - name: APK bauen
         if: env.BUILD_TYPE == 'release'
         working-directory: wachwerk-android
         env:
@@ -148,12 +148,18 @@ jobs:
           WACHWERK_KEY_ALIAS: ${{ secrets.WACHWERK_KEY_ALIAS }}
           WACHWERK_KEY_PASSWORD: ${{ secrets.WACHWERK_KEY_PASSWORD }}
         run: |
+          missing_secret=false
           for secret_name in WACHWERK_KEYSTORE_BASE64 WACHWERK_STORE_PASSWORD WACHWERK_KEY_ALIAS WACHWERK_KEY_PASSWORD; do
             if [[ -z "${!secret_name}" ]]; then
-              echo "::error::GitHub-Secret $secret_name fehlt. Siehe docs/GITHUB-ACTIONS.md."
-              exit 1
+              missing_secret=true
             fi
           done
+          if [[ "$missing_secret" == "true" ]]; then
+            echo "::warning::Signaturschlüssel fehlt – stattdessen wird eine Test-APK als Actions-Artefakt gebaut."
+            bash gradlew --no-daemon --no-configuration-cache assembleDebug
+            echo "BUILD_TYPE=debug" >> "$GITHUB_ENV"
+            exit 0
+          fi
           umask 077
           WACHWERK_KEYSTORE="$(mktemp "$RUNNER_TEMP/wachwerk-signing-XXXXXX.jks")"
           export WACHWERK_KEYSTORE

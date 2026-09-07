@@ -51,7 +51,7 @@ Den Zwischenablage-Inhalt ausschließlich als Wert von `WACHWERK_KEYSTORE_BASE64
 
 Anschließend genügt jeder Push von App-Code auf den Standardbranch. Der Workflow prüft den Code, erhöht den Android-Versionscode, signiert die APK und veröffentlicht sie unter **Releases**. Ein manueller `release`-Lauf ist weiterhin möglich.
 
-Wenn ein Secret fehlt oder die Signierung scheitert, schlägt der Lauf fehl. Es wird **nicht** stillschweigend eine unpassende Test- oder unsignierte APK als Release ausgegeben. Release-Builds sind nur bei Pushes oder manuellen Starts auf dem Standardbranch erlaubt. Verwende dafür ausschließlich geprüften Code; wer diesen Code oder den Workflow ändern kann, könnte sonst beim Build auf die freigegebenen Secrets zugreifen. Branch-Schutz und sorgfältige Prüfung von Änderungen sind deshalb sinnvoll.
+Wenn ein Secret fehlt, erstellt der Lauf automatisch nur eine klar gekennzeichnete Test-APK als Actions-Artefakt und überspringt das GitHub-Release. Schlägt eine vorhandene Signierung fehl, bleibt der Lauf rot. Release-Builds sind nur bei Pushes oder manuellen Starts auf dem Standardbranch erlaubt. Verwende dafür ausschließlich geprüften Code; wer diesen Code oder den Workflow ändern kann, könnte sonst beim Build auf die freigegebenen Secrets zugreifen. Branch-Schutz und sorgfältige Prüfung von Änderungen sind deshalb sinnvoll.
 
 `versionCode` und die vollständige `versionName` werden im Workflow automatisch aus GitHub-Laufnummer und -Versuch gebildet. Die Basisversion in `wachwerk-local-web/package.json` wird nur bei größeren geplanten Versionssprüngen von Hand geändert.
 
