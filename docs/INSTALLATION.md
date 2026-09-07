@@ -2,7 +2,7 @@
 
 ## 1. APK herunterladen
 
-Öffne auf GitHub **Releases**, wähle Version **1.13.0** und lade unter **Assets** die Datei `Wachwerk-v1.13.0-Offline-signiert.apk` herunter. Die automatisch angebotenen „Source code“-ZIPs enthalten Quellcode, keine direkt installierbare App.
+Öffne auf GitHub **Releases**, wähle Version **1.13.0** und lade unter **Assets** die Datei `MACH-v1.13.0-Offline-signiert.apk` herunter. Die automatisch angebotenen „Source code“-ZIPs enthalten Quellcode, keine direkt installierbare App.
 
 Du brauchst Android 8.0 oder neuer. NFC ist optional; QR, Schütteln und andere Aufgaben stehen als Alternativen zur Verfügung.
 
@@ -10,11 +10,11 @@ Du brauchst Android 8.0 oder neuer. NFC ist optional; QR, Schütteln und andere 
 
 Öffne die APK auf dem Handy. Erlaube Android bei Bedarf die Installation aus der verwendeten Quelle, zum Beispiel dem Browser oder Dateimanager. Diese Erlaubnis kann danach wieder ausgeschaltet werden.
 
-**Vorhandene App nicht deinstallieren.** Die Release-Version 1.13.0 verwendet denselben Schlüssel wie die bisherigen Wachwerk-Releases. Bei einer Meldung über eine inkompatible Signatur nicht einfach deinstallieren: Vermutlich ist eine anders signierte Version installiert.
+**Vorhandene App nicht deinstallieren.** Die Release-Version 1.13.0 verwendet denselben Schlüssel wie die bisherigen MACH-Releases. Bei einer Meldung über eine inkompatible Signatur nicht einfach deinstallieren: Vermutlich ist eine anders signierte Version installiert.
 
 ## 3. Android-Zugriffe prüfen
 
-Wachwerk zeigt die notwendigen Zugriffe in der App an. Nicht jede Funktion braucht alle Berechtigungen:
+MACH zeigt die notwendigen Zugriffe in der App an. Nicht jede Funktion braucht alle Berechtigungen:
 
 | Zugriff | Wofür? |
 | --- | --- |
@@ -37,7 +37,7 @@ Bei seitlich installierten Apps kann Android besondere Bestätigungen verlangen.
 4. Unter **Blocker → Morgen** eine App auswählen, eine Minute einstellen und aktivieren. Nach dem nächsten erfolgreich beendeten Wecker muss diese App vorübergehend gesperrt sein. Snooze darf die Morgensperre noch nicht starten.
 5. Ein Tageslimit mit kurzer Nutzungszeit prüfen und die Anzeige am nächsten Tag kontrollieren.
 
-Hersteller-Energiesparmodi können Hintergrundfunktionen beeinflussen. Ein komplett ausgeschaltetes Handy, Androids „Stopp erzwingen“ oder entzogene Berechtigungen kann Wachwerk nicht umgehen. Bis der Gerätetest erfolgreich war, für wichtige Termine einen zweiten Wecker verwenden.
+Hersteller-Energiesparmodi können Hintergrundfunktionen beeinflussen. Ein komplett ausgeschaltetes Handy, Androids „Stopp erzwingen“ oder entzogene Berechtigungen kann MACH nicht umgehen. Bis der Gerätetest erfolgreich war, für wichtige Termine einen zweiten Wecker verwenden.
 
 ## Hinweise zur Genauigkeit
 

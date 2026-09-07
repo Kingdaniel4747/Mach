@@ -55,7 +55,7 @@ public class NfcTagActivity extends Activity implements NfcAdapter.ReaderCallbac
         TextView title = text(enroll ? "NFC-Tag anlernen" : "NFC-Tag scannen", 27, Color.WHITE, Typeface.BOLD);
         LinearLayout.LayoutParams titleParams = wrap(); titleParams.topMargin = dp(24); root.addView(title, titleParams);
         TextView info = text(enroll
-            ? "Halte den Tag ruhig an die Rückseite des Handys. Wachwerk speichert nur seine feste Tag-ID lokal und beschreibt den Tag nicht."
+            ? "Halte den Tag ruhig an die Rückseite des Handys. MACH speichert nur seine feste Tag-ID lokal und beschreibt den Tag nicht."
             : "Halte den angelernten Tag an die Rückseite des Handys.", 14, palette.map(Color.rgb(190, 211, 229)), Typeface.NORMAL);
         info.setGravity(Gravity.CENTER); LinearLayout.LayoutParams infoParams = matchWrap(); infoParams.topMargin = dp(12); root.addView(info, infoParams);
         status = text(adapter == null ? "Dieses Handy unterstützt kein NFC." : adapter.isEnabled() ? "Bereit · warte auf den Tag …" : "NFC ist ausgeschaltet.", 13, palette.map(Color.rgb(255, 211, 71)), Typeface.BOLD);
@@ -90,7 +90,7 @@ public class NfcTagActivity extends Activity implements NfcAdapter.ReaderCallbac
             if (enroll) {
                 token = uidToken(tag);
                 boolean cleaned = removeLegacyWachwerkRecord(tag);
-                label = cleaned ? "NFC-Tag angelernt und alten Wachwerk-Eintrag entfernt" : "NFC-Tag erfolgreich angelernt";
+                label = cleaned ? "NFC-Tag angelernt und alten MACH-Eintrag entfernt" : "NFC-Tag erfolgreich angelernt";
             } else {
                 token = tokenForTag(tag);
                 if (expected == null || expected.isEmpty() || !expected.equals(token)) {

@@ -23,7 +23,7 @@ public class TodoReminderReceiver extends BroadcastReceiver {
         Notification notification = new Notification.Builder(context, MainActivity.TODO_CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
             .setColor(Color.rgb(155, 245, 177))
-            .setContentTitle("Wachwerk · Aufgabe fällig")
+            .setContentTitle("MACH · Aufgabe fällig")
             .setContentText(text)
             .setStyle(new Notification.BigTextStyle().bigText(text))
             .setCategory(Notification.CATEGORY_REMINDER)

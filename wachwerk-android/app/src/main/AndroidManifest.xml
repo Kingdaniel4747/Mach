@@ -29,7 +29,7 @@
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="Wachwerk"
+        android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Wachwerk"
@@ -97,7 +97,7 @@
             android:name=".AppBlockAccessibilityService"
             android:description="@string/accessibility_desc"
             android:exported="true"
-            android:label="Wachwerk App-Blocker"
+            android:label="MACH App-Blocker"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />

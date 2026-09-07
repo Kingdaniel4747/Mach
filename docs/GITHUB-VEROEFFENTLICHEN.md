@@ -18,7 +18,7 @@ Quelle: [GitHub – Repository erstellen](https://docs.github.com/en/repositorie
 
 Öffne auf der Repository-Seite **Releases**, erstelle einen neuen Release-Entwurf und lege den Tag `v1.13.0` auf dem hochgeladenen Quellcode-Stand an.
 
-Titel: **Wachwerk 1.13.0**
+Titel: **MACH 1.13.0**
 
 Im mitgelieferten Paket liegt neben dem Repository ein Ordner `Release-Dateien/v1.13.0`. Er enthält APK, Quellcode-ZIP, Drittanbieter-Lizenzen, Prüfsummen und einen fertigen `RELEASE-TEXT.md`.
 

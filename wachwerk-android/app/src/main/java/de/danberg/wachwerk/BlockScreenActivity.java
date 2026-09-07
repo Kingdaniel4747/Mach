@@ -80,7 +80,7 @@ public class BlockScreenActivity extends Activity implements NfcAdapter.ReaderCa
         TextView info=text(appLabel(blockedPackage)+" wartet noch. Deine Morgensperre endet automatisch; andere Sperren bleiben unverändert.",16,palette.muted,Typeface.NORMAL);
         info.setGravity(Gravity.CENTER);root.addView(info,p);
         status=text("",58,palette.text,Typeface.BOLD);status.setGravity(Gravity.CENTER);root.addView(status,p);
-        Button home=smallButton("Wachwerk öffnen");home.setOnClickListener(v->returnToBlocker());root.addView(home,p);
+        Button home=smallButton("MACH öffnen");home.setOnClickListener(v->returnToBlocker());root.addView(home,p);
         android.widget.ScrollView scroll=new android.widget.ScrollView(this);scroll.setFillViewport(true);scroll.addView(root);setContentView(scroll);
     }
 
@@ -104,8 +104,8 @@ public class BlockScreenActivity extends Activity implements NfcAdapter.ReaderCa
         TextView title = text(titleText, 27, Color.WHITE, Typeface.BOLD);
         title.setGravity(Gravity.CENTER); LinearLayout.LayoutParams titleParams = matchWrap(); titleParams.topMargin = dp(22); root.addView(title, titleParams);
         String actionResult = limitMode || scheduleMode ? "Diese Regel pausiert für deine ausgewählte Dauer. Weitere aktive Sperren werden separat freigegeben." : focusMode ? "Gibt die Fokus-Sperre frei. Andere Regeln bleiben aktiv." : "Hebt die Direkt-Sperre auf. Tageslimits und Uhrzeiten bleiben unverändert.";
-        String instruction = "qr".equals(method) ? "Scanne deinen ausgedruckten Wachwerk-QR-Code. " + actionResult
-            : "password".equals(method) ? "Gib dein Wachwerk-Passwort ein. " + actionResult
+        String instruction = "qr".equals(method) ? "Scanne deinen ausgedruckten MACH-QR-Code. " + actionResult
+            : "password".equals(method) ? "Gib dein MACH-Passwort ein. " + actionResult
             : "Halte den angelernten NFC-Tag an die Rückseite des Handys. " + actionResult;
         String reason = limitMode ? "Dein tägliches Zeitlimit für " + appLabel(blockedPackage) + " ist aufgebraucht. "
             : focusMode ? appLabel(blockedPackage) + " gehört zu deiner Fokus-Sperre. "
@@ -140,7 +140,7 @@ public class BlockScreenActivity extends Activity implements NfcAdapter.ReaderCa
             });
             LinearLayout.LayoutParams verifyParams = compact(dp(48)); verifyParams.topMargin = dp(10); root.addView(verify, verifyParams);
         }
-        Button open = new Button(this); open.setText("Wachwerk öffnen"); open.setAllCaps(false); open.setTypeface(Typeface.DEFAULT_BOLD); open.setTextColor(palette.map(Color.rgb(201,220,248))); open.setBackground(rounded(palette.map(Color.rgb(24,51,72)), 15));
+        Button open = new Button(this); open.setText("MACH öffnen"); open.setAllCaps(false); open.setTypeface(Typeface.DEFAULT_BOLD); open.setTextColor(palette.map(Color.rgb(201,220,248))); open.setBackground(rounded(palette.map(Color.rgb(24,51,72)), 15));
         open.setOnClickListener(v -> returnToBlocker());
         LinearLayout.LayoutParams buttonParams = compact(dp(48)); buttonParams.topMargin = dp(48); root.addView(open, buttonParams);
         android.widget.ScrollView scroll = new android.widget.ScrollView(this); scroll.setFillViewport(true); scroll.addView(root); setContentView(scroll);
@@ -199,7 +199,7 @@ public class BlockScreenActivity extends Activity implements NfcAdapter.ReaderCa
                 unlockAfterTagRemoved(tag);
             } else if (expected.equals(scanned)) {
                 unlockAfterTagRemoved(tag);
-            } else status.setText("Falscher Tag · bitte den angelernten Wachwerk-Tag verwenden.");
+            } else status.setText("Falscher Tag · bitte den angelernten MACH-Tag verwenden.");
         });
     }
 

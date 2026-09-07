@@ -1,4 +1,4 @@
-# Wachwerk selbst bauen
+# MACH selbst bauen
 
 Du möchtest nur den Code bearbeiten und den APK-Build GitHub überlassen? Nutze den vorbereiteten Workflow: [APK mit GitHub Actions bauen](GITHUB-ACTIONS.md). Die folgenden Schritte sind für lokale Builds gedacht.
 

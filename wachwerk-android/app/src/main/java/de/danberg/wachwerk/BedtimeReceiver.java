@@ -175,14 +175,14 @@ public class BedtimeReceiver extends BroadcastReceiver {
     private static void postReminder(Context context, int count) {
         SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         String custom = prefs.getString("message", "Zeit, das Handy wegzulegen und schlafen zu gehen.");
-        String message = count == 0 ? custom : custom + (count > 2 ? " Jetzt wirklich." : " Wachwerk erinnert dich erneut.");
+        String message = count == 0 ? custom : custom + (count > 2 ? " Jetzt wirklich." : " MACH erinnert dich erneut.");
         Intent open = new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         PendingIntent content = PendingIntent.getActivity(context, 28000, open,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         Notification notification = new Notification.Builder(context, MainActivity.BEDTIME_CHANNEL)
             .setSmallIcon(de.danberg.wachwerk.R.drawable.ic_notification)
             .setColor(Color.rgb(155, 245, 177))
-            .setContentTitle("Wachwerk · Einschlaf-Coach")
+            .setContentTitle("MACH · Einschlaf-Coach")
             .setContentText(message)
             .setStyle(new Notification.BigTextStyle().bigText(message))
             .setCategory(Notification.CATEGORY_REMINDER)

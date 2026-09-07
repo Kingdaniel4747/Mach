@@ -1,12 +1,12 @@
 ![Dein Abend. Dein Morgen. Dein Rhythmus.](docs/images/banner.svg)
 
-<img align="right" src="docs/images/logo.png" width="88" alt="Wachwerk App-Logo">
+<img align="right" src="docs/images/logo.png" width="88" alt="MACH App-Logo">
 
-# Wachwerk
+# MACH.
 
-**Ein Wecker, der dich durch den Tag begleitet.**
+**Kein später.**
 
-Wachwerk verbindet Wecker, Einschlaf-Erinnerungen, einen Standby-Modus, Fokus-Timer und einen App-Blocker mit To-dos und täglichen Habits. Das Ziel: weniger am Handy hängen, bewusster aufstehen und den eigenen Alltag strukturieren.
+MACH verbindet Wecker, Einschlaf-Erinnerungen, einen Standby-Modus, Fokus-Timer und einen App-Blocker mit To-dos und täglichen Habits. Das Ziel: aufstehen, anfangen und durchziehen – statt wieder zu verschieben.
 
 **Android 8.0+ · Offline · Kein Benutzerkonto · Version 1.13.0 · In Entwicklung**
 
@@ -14,9 +14,9 @@ Wachwerk verbindet Wecker, Einschlaf-Erinnerungen, einen Standby-Modus, Fokus-Ti
 
 ## Die Idee
 
-Abends fällt es schwer, das Handy wegzulegen. Morgens ist der Wecker schnell ausgeschaltet – und der nächste Feed schon offen. Wachwerk setzt an beiden Stellen an: mit Erinnerungen am Abend, einer bewussten Aufwachaufgabe und einer optionalen Handy-Pause nach dem Aufstehen.
+Abends fällt es schwer, das Handy wegzulegen. Morgens ist der Wecker schnell ausgeschaltet – und der nächste Feed schon offen. MACH setzt an beiden Stellen an: mit Erinnerungen am Abend, einer bewussten Aufwachaufgabe und einer optionalen Handy-Pause nach dem Aufstehen.
 
-![Wachwerk im Tagesverlauf: Abend, Morgen und Tag](docs/images/tagesablauf.svg)
+![MACH im Tagesverlauf: Abend, Morgen und Tag](docs/images/tagesablauf.svg)
 
 *Die Grafiken zeigen das Konzept. Sie sind keine Screenshots oder Messwerte eines echten Nutzers.*
 
@@ -41,9 +41,9 @@ Der Coach arbeitet mit deinen Einträgen und einstellbaren Annahmen. Er misst ke
 
 Die installierbare Datei findest du im GitHub-Bereich **Releases** unter **Assets**:
 
-`Wachwerk-v1.13.0-Offline-signiert.apk`
+`MACH-v1.13.0-Offline-signiert.apk`
 
-APK auf das Android-Handy laden, öffnen und die Installation für die verwendete Quelle erlauben. Bei einer vorhandenen Wachwerk-Version als **Update** installieren – nicht vorher deinstallieren. Die ausführliche Anleitung erklärt auch die benötigten Android-Zugriffe: [Installation und erster Test](docs/INSTALLATION.md).
+APK auf das Android-Handy laden, öffnen und die Installation für die verwendete Quelle erlauben. Bei einer vorhandenen MACH-Version als **Update** installieren – nicht vorher deinstallieren. Die ausführliche Anleitung erklärt auch die benötigten Android-Zugriffe: [Installation und erster Test](docs/INSTALLATION.md).
 
 > **Entwicklungsstand:** 25 Android-Unit-Tests und 5 Web-Logiktests bestanden beim Build von 1.13.0. NFC, Alarmton im Hintergrund und herstellerspezifisches Energiesparen müssen auf dem Zielgerät geprüft werden. Vor wichtigen Terminen zunächst einen Ersatzwecker verwenden.
 
@@ -86,4 +86,4 @@ Hilfreich sind App-Version, Handy-Modell, Android-/One-UI-Version und kurze Schr
 
 ## Lizenzstatus
 
-Für den eigenen Wachwerk-Code ist bisher **keine Open-Source-Lizenz festgelegt**. Drittanbieter-Komponenten behalten ihre jeweiligen Lizenzen. Siehe [Lizenzstatus](LICENSE-STATUS.md) und [Drittanbieter-Hinweise](THIRD_PARTY_NOTICES.md).
+Für den eigenen MACH-Code ist bisher **keine Open-Source-Lizenz festgelegt**. Drittanbieter-Komponenten behalten ihre jeweiligen Lizenzen. Siehe [Lizenzstatus](LICENSE-STATUS.md) und [Drittanbieter-Hinweise](THIRD_PARTY_NOTICES.md).

@@ -11,8 +11,8 @@ Die App bleibt offline. Nur der **Build** läuft auf GitHub; App-Daten werden da
 3. Links **Android APK bauen** öffnen. Wenn GitHub Actions noch deaktiviert ist, zunächst für dieses Repository aktivieren.
 4. Nach Code-Änderungen auf `main` oder `master` startet automatisch ein `debug`-Build. Pull Requests werden ebenfalls geprüft. Reine Dokumentationsänderungen lösen keinen Build aus.
 5. Alternativ **Run workflow** anklicken, den Branch und zunächst `debug` wählen und starten. Der Workflow muss dafür auf dem Standardbranch vorhanden sein.
-6. Den erfolgreichen Lauf öffnen. Unter **Artifacts** das Paket `Wachwerk-debug-…` herunterladen oder den Download-Link in der Zusammenfassung verwenden.
-7. ZIP entpacken. Darin liegen `Wachwerk-debug.apk`, `SHA256SUMS.txt` und `BUILD-INFO.txt` mit der zugehörigen Commit-ID.
+6. Den erfolgreichen Lauf öffnen. Unter **Artifacts** das Paket `MACH-debug-…` herunterladen oder den Download-Link in der Zusammenfassung verwenden.
+7. ZIP entpacken. Darin liegen `MACH-debug.apk`, `SHA256SUMS.txt` und `BUILD-INFO.txt` mit der zugehörigen Commit-ID.
 
 Die APK-Downloads werden für 30 Tage, Android-Prüfberichte für 14 Tage angefordert; eine strengere Repository-/Organisationsrichtlinie kann das begrenzen. Lade wichtige Ergebnisse rechtzeitig herunter. Der Workflow erstellt **keinen öffentlichen Release** und pusht keine Dateien zurück ins Repository.
 
@@ -25,7 +25,7 @@ Zum Herunterladen von Actions-Artefakten musst du bei GitHub angemeldet sein und
 | `debug` | Keine Secrets nötig | Testinstallation mit automatisch erzeugtem Debug-Schlüssel. Nicht als Update der bisher signierten Release-App geeignet. |
 | `release` | Vier private GitHub-Secrets | APK mit deinem hinterlegten Schlüssel; mit dem bisherigen Schlüssel für Updates geeignet. |
 
-**Wichtig:** Der temporäre GitHub-Rechner kann bei jedem Lauf einen anderen Debug-Schlüssel erzeugen. Debug-APKs sind deshalb auch untereinander nicht zuverlässig als Update installierbar. Die bestehende Wachwerk-App mit ihren Daten nicht einfach deinstallieren. Für dein regelmäßig benutztes Handy die Release-Variante mit dem bisherigen Schlüssel verwenden; für Debug einen Emulator oder ein separates Testgerät ohne vorhandene Installation nutzen.
+**Wichtig:** Der temporäre GitHub-Rechner kann bei jedem Lauf einen anderen Debug-Schlüssel erzeugen. Debug-APKs sind deshalb auch untereinander nicht zuverlässig als Update installierbar. Die bestehende MACH-App mit ihren Daten nicht einfach deinstallieren. Für dein regelmäßig benutztes Handy die Release-Variante mit dem bisherigen Schlüssel verwenden; für Debug einen Emulator oder ein separates Testgerät ohne vorhandene Installation nutzen.
 
 ## 3. Signierte Release-APK einmalig einrichten
 
@@ -35,7 +35,7 @@ Im Repository **Settings → Secrets and variables → Actions → New repositor
 | --- | --- |
 | `WACHWERK_KEYSTORE_BASE64` | Der Inhalt deiner bisherigen Keystore-Datei, als Base64 codiert |
 | `WACHWERK_STORE_PASSWORD` | Passwort dieser Keystore-Datei |
-| `WACHWERK_KEY_ALIAS` | Alias des bisherigen Schlüssels; beim ursprünglichen Wachwerk-Schlüssel `wachwerk` |
+| `WACHWERK_KEY_ALIAS` | Alias des bisherigen Schlüssels; beim ursprünglichen MACH-Schlüssel `wachwerk` |
 | `WACHWERK_KEY_PASSWORD` | Passwort des Schlüssels |
 
 Den **bisherigen** privaten Signaturschlüssel benutzen, nicht einen neuen erzeugen. Er ist absichtlich nicht Teil des Repositorys. Lade weder die Schlüsseldatei noch ihr Backup in Git, Issues oder Releases hoch.
@@ -53,8 +53,8 @@ Anschließend:
 
 1. **Actions → Android APK bauen → Run workflow**.
 2. Den Standardbranch, normalerweise `main`, und `release` auswählen.
-3. Nach erfolgreichem Lauf das Paket `Wachwerk-release-…` herunterladen und entpacken.
-4. `Wachwerk-release.apk` auf dem Handy als Update installieren oder als Asset eines GitHub-Releases anhängen.
+3. Nach erfolgreichem Lauf das Paket `MACH-release-…` herunterladen und entpacken.
+4. `MACH-release.apk` auf dem Handy als Update installieren oder als Asset eines GitHub-Releases anhängen.
 
 Wenn ein Secret fehlt oder die Signierung scheitert, schlägt der Lauf fehl. Es wird **nicht** stillschweigend eine unpassende Test- oder unsignierte APK als Release ausgegeben. Release-Builds sind nur manuell vom Standardbranch erlaubt. Verwende dafür ausschließlich geprüften Code; wer diesen Code oder den Workflow ändern kann, könnte sonst beim Build auf die freigegebenen Secrets zugreifen. Branch-Schutz und sorgfältige Prüfung von Änderungen sind deshalb sinnvoll.
 

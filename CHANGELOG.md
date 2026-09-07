@@ -1,5 +1,11 @@
 # Änderungsverlauf
 
+## Nächste Version
+
+- Neue Marke **MACH.** mit dem Leitsatz „Kein später.“
+- Neues App-Icon in Nachtblau, Rot und Orange.
+- Der technische Paketname bleibt für kompatible Updates unverändert.
+
 ## 1.13.0 · 2. September 2026
 
 ### Neu

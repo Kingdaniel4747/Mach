@@ -1,4 +1,4 @@
-name: Android APK bauen
+name: MACH APK bauen
 
 run-name: APK · ${{ inputs.build_type || 'debug' }} · ${{ github.ref_name }}
 
@@ -158,10 +158,10 @@ jobs:
           test -s "$apk"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk"
           mkdir -p apk-download
-          cp "$apk" "apk-download/Wachwerk-$BUILD_TYPE.apk"
+          cp "$apk" "apk-download/MACH-$BUILD_TYPE.apk"
           (
             cd apk-download
-            sha256sum "Wachwerk-$BUILD_TYPE.apk" > SHA256SUMS.txt
+            sha256sum "MACH-$BUILD_TYPE.apk" > SHA256SUMS.txt
             printf 'Build: %s\nCommit: %s\nWorkflow-Lauf: %s, Versuch: %s\n' \
               "$BUILD_TYPE" "$GITHUB_SHA" "$GITHUB_RUN_NUMBER" "$GITHUB_RUN_ATTEMPT" > BUILD-INFO.txt
           )
@@ -170,7 +170,7 @@ jobs:
         id: apk
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: Wachwerk-${{ env.BUILD_TYPE }}-${{ github.run_number }}-${{ github.run_attempt }}
+          name: MACH-${{ env.BUILD_TYPE }}-${{ github.run_number }}-${{ github.run_attempt }}
           path: apk-download/
           if-no-files-found: error
           retention-days: 30
@@ -181,7 +181,7 @@ jobs:
           APK_URL: ${{ steps.apk.outputs.artifact-url }}
         run: |
           {
-            printf '## Wachwerk-APK ist fertig\n\n[APK-Paket herunterladen](%s)\n\n' "$APK_URL"
+            printf '## MACH-APK ist fertig\n\n[APK-Paket herunterladen](%s)\n\n' "$APK_URL"
             printf 'Enthalten: APK, SHA-256-Prüfsumme und Commit-ID. Das ZIP vor der Installation entpacken.\n\n'
             if [[ "$BUILD_TYPE" == "debug" ]]; then
               printf '**Test-APK:** Nicht mit dem bisherigen Release-Schlüssel signiert; kein Update deiner vorhandenen Release-Installation. Vorhandene App nicht für einen Test deinstallieren.\n'

@@ -24,7 +24,7 @@ public class MorningCheckReceiver extends BroadcastReceiver {
         Notification notification = new Notification.Builder(context, MainActivity.MORNING_CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
             .setColor(Color.rgb(155, 245, 177))
-            .setContentTitle("Wachwerk · Morgencheck")
+            .setContentTitle("MACH · Morgencheck")
             .setContentText("Wie lief dein Aufstehen heute?")
             .setStyle(new Notification.BigTextStyle().bigText("Direkt auf, zu spät oder verschlafen? Ein Tipp genügt und verbessert deine persönliche Schlafanalyse."))
             .setCategory(Notification.CATEGORY_REMINDER)

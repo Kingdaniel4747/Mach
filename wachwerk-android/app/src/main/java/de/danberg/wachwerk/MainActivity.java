@@ -291,7 +291,7 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT < 26) return;
         NotificationManager manager = context.getSystemService(NotificationManager.class);
         NotificationChannel alarms = new NotificationChannel(ALARM_CHANNEL, "Wecker", NotificationManager.IMPORTANCE_HIGH);
-        alarms.setDescription("Vollbild-Wecker von Wachwerk");
+        alarms.setDescription("Vollbild-Wecker von MACH");
         alarms.enableVibration(true);
         alarms.setBypassDnd(true);
         alarms.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
@@ -412,7 +412,7 @@ public class MainActivity extends Activity {
         public void printCurrentPage() {
             handler.post(() -> {
                 PrintManager manager = (PrintManager) getSystemService(Context.PRINT_SERVICE);
-                manager.print("Wachwerk QR-Code", webView.createPrintDocumentAdapter("Wachwerk QR-Code"),
+                manager.print("MACH QR-Code", webView.createPrintDocumentAdapter("MACH QR-Code"),
                     new PrintAttributes.Builder().setMediaSize(PrintAttributes.MediaSize.ISO_A4).build());
             });
         }
@@ -715,7 +715,7 @@ public class MainActivity extends Activity {
         exactPromptShown = true;
         new AlertDialog.Builder(this)
             .setTitle("Wecker zuverlässig erlauben")
-            .setMessage("Android braucht einmal die Erlaubnis „Alarme & Erinnerungen“, damit Wachwerk sekundengenau klingeln darf – auch bei gesperrtem Bildschirm.")
+            .setMessage("Android braucht einmal die Erlaubnis „Alarme & Erinnerungen“, damit MACH sekundengenau klingeln darf – auch bei gesperrtem Bildschirm.")
             .setPositiveButton("Erlauben", (dialog, which) -> startActivity(new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:" + getPackageName()))))
             .setNegativeButton("Später", null)
             .show();
@@ -728,7 +728,7 @@ public class MainActivity extends Activity {
         fullScreenPromptShown = true;
         new AlertDialog.Builder(this)
             .setTitle("Wecker auf dem Sperrbildschirm")
-            .setMessage("Erlaube Wachwerk einmal Vollbild-Benachrichtigungen. Nur so können Wecker und sanftes Licht den ausgeschalteten Bildschirm zuverlässig einschalten.")
+            .setMessage("Erlaube MACH einmal Vollbild-Benachrichtigungen. Nur so können Wecker und sanftes Licht den ausgeschalteten Bildschirm zuverlässig einschalten.")
             .setPositiveButton("Erlauben", (dialog, which) -> startActivity(new Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:" + getPackageName()))))
             .setNegativeButton("Später", null)
             .show();
@@ -821,7 +821,7 @@ public class MainActivity extends Activity {
         } else {
             new AlertDialog.Builder(this)
                 .setTitle("Kamera für QR-Code erlauben")
-                .setMessage("Die Berechtigung wurde abgelehnt. Öffne die Android-App-Einstellungen und aktiviere dort Kamera für Wachwerk.")
+                .setMessage("Die Berechtigung wurde abgelehnt. Öffne die Android-App-Einstellungen und aktiviere dort Kamera für MACH.")
                 .setPositiveButton("App-Einstellungen", (dialog, which) -> startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))))
                 .setNegativeButton("Abbrechen", null).show();
         }

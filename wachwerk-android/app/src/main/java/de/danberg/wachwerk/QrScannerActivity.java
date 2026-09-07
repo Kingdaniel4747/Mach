@@ -81,7 +81,7 @@ public class QrScannerActivity extends Activity implements TextureView.SurfaceTe
         FrameLayout.LayoutParams frameParams = new FrameLayout.LayoutParams(dp(270), dp(270), Gravity.CENTER); root.addView(scanFrame, frameParams);
         TextView title = label("QR-Code scannen", 24, Color.WHITE); title.setGravity(Gravity.CENTER);
         FrameLayout.LayoutParams titleParams = new FrameLayout.LayoutParams(-1, -2, Gravity.TOP); titleParams.setMargins(dp(20), dp(58), dp(20), 0); root.addView(title, titleParams);
-        status = label("Halte deinen gedruckten Wachwerk-Code in den Rahmen.", 14, palette.map(Color.rgb(210,225,240))); status.setGravity(Gravity.CENTER);
+        status = label("Halte deinen gedruckten MACH-Code in den Rahmen.", 14, palette.map(Color.rgb(210,225,240))); status.setGravity(Gravity.CENTER);
         FrameLayout.LayoutParams statusParams = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM); statusParams.setMargins(dp(28), 0, dp(28), dp(55)); root.addView(status, statusParams);
         setContentView(root);
     }
@@ -150,7 +150,7 @@ public class QrScannerActivity extends Activity implements TextureView.SurfaceTe
             Result result = decoder.decodeWithState(bitmap);
             if (result != null) {
                 if (expected == null || expected.equals(result.getText())) runOnUiThread(() -> { setResult(RESULT_OK); finish(); });
-                else runOnUiThread(() -> status.setText("Das ist ein anderer QR-Code. Suche deinen Wachwerk-Code."));
+                else runOnUiThread(() -> status.setText("Das ist ein anderer QR-Code. Suche deinen MACH-Code."));
             }
         } catch (Exception ignored) {
             // Most camera frames do not contain a complete QR code.
@@ -165,7 +165,7 @@ public class QrScannerActivity extends Activity implements TextureView.SurfaceTe
         else {
             status.setText("Ohne Kamerazugriff kann der QR-Wecker nicht beendet werden."); setResult(RESULT_CANCELED);
             new AlertDialog.Builder(this).setTitle("Kamera erlauben")
-                .setMessage("Öffne die Android-App-Einstellungen und aktiviere dort die Kamera für Wachwerk.")
+                .setMessage("Öffne die Android-App-Einstellungen und aktiviere dort die Kamera für MACH.")
                 .setPositiveButton("App-Einstellungen", (dialog, which) -> startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))))
                 .setNegativeButton("Zurück", (dialog, which) -> finish()).show();
         }

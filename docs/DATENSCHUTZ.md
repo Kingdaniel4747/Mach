@@ -1,6 +1,6 @@
 # Daten & Berechtigungen
 
-Wachwerk ist ohne Benutzerkonto und ohne eigenen Cloud-Dienst konzipiert. In der APK ist keine `INTERNET`-Berechtigung deklariert. Die lokale Oberfläche enthält keine Werbe- oder Analyse-SDKs.
+MACH ist ohne Benutzerkonto und ohne eigenen Cloud-Dienst konzipiert. In der APK ist keine `INTERNET`-Berechtigung deklariert. Die lokale Oberfläche enthält keine Werbe- oder Analyse-SDKs.
 
 ## Was wird gespeichert?
 
@@ -12,7 +12,7 @@ Die App ist kein verschlüsselter Datentresor. Ein Gerätezugriff, Root-Zugriff 
 
 Die Bedienungshilfe verarbeitet Fenster-/App-Ereignisse, um die aktive App zu erkennen und ausgewählte Apps zu sperren. Sie ist nicht zum Auslesen von Bildschirmtext eingerichtet (`canRetrieveWindowContent=false`).
 
-Der Nutzungsdatenzugriff liefert Android-Ereignisse zur App-Nutzung. Wachwerk berechnet daraus die heutige Vordergrundzeit. Es greift nicht auf private Samsung-Datenbanken zu.
+Der Nutzungsdatenzugriff liefert Android-Ereignisse zur App-Nutzung. MACH berechnet daraus die heutige Vordergrundzeit. Es greift nicht auf private Samsung-Datenbanken zu.
 
 ## NFC, QR und Passwort
 
