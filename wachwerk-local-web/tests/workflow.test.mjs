@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { changeHabitResult, calendarState, clampDial, angleDelta, scopeFlag } from '../src/workflow.ts';
+import { changeHabitResult, calendarState, clampDial, angleDelta, scopeFlag, deterministicIndex, streakFromDates, rewardProgress } from '../src/workflow.ts';
 
 test('Habit: offen → geschafft → nicht geschafft → offen; Verlauf bleibt erhalten', () => {
   const old = { completedDates:['2026-08-31'], missedDates:[], text:'Sport' };
@@ -39,4 +39,17 @@ test('Jeder Sperr-Tab verwendet seinen eigenen Aktivierungszustand', () => {
   assert.equal(scopeFlag('instant'),'enabled');
   assert.equal(scopeFlag('limits'),'limitsEnabled');
   assert.equal(scopeFlag('windows'),'windowsEnabled');
+});
+test('Tagesquest bleibt am selben Tag gleich und liegt im Portfolio', () => {
+  assert.equal(deterministicIndex('2026-09-07', 12), deterministicIndex('2026-09-07', 12));
+  assert.ok(deterministicIndex('2026-09-07', 12) >= 0);
+  assert.ok(deterministicIndex('2026-09-07', 12) < 12);
+});
+test('Quest-Serie zählt nur lückenlose Tage bis heute', () => {
+  assert.equal(streakFromDates(['2026-09-05','2026-09-06','2026-09-07'], '2026-09-07'), 3);
+  assert.equal(streakFromDates(['2026-09-05','2026-09-07'], '2026-09-07'), 1);
+});
+test('XP-Meilensteine vergeben gedeckelte Belohnungsminuten', () => {
+  assert.deepEqual(rewardProgress(90, 20, 100, 5, 0, 30), { xp:110, earnedMinutes:5, availableMinutes:5 });
+  assert.deepEqual(rewardProgress(190, 220, 100, 10, 25, 30), { xp:410, earnedMinutes:30, availableMinutes:30 });
 });

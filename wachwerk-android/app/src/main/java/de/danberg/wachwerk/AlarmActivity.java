@@ -75,7 +75,7 @@ public class AlarmActivity extends Activity implements SensorEventListener, NfcA
         GentleWakeActivity.finishIfRunning();
         if (Build.VERSION.SDK_INT >= 27) { setShowWhenLocked(true); setTurnScreenOn(true); }
         else getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON | WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         getWindow().setStatusBarColor(INK);
         getWindow().setNavigationBarColor(INK);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
@@ -123,7 +123,7 @@ public class AlarmActivity extends Activity implements SensorEventListener, NfcA
         pulse.setGravity(Gravity.CENTER);
         content.addView(pulse, new LinearLayout.LayoutParams(dp(106), dp(106)));
 
-        TextView overline = label("WACHWERK · GUTEN MORGEN", 11, palette.map(Color.rgb(131, 164, 197)), Typeface.BOLD);
+        TextView overline = label("MACH. · GUTEN MORGEN", 11, palette.map(Color.rgb(131, 164, 197)), Typeface.BOLD);
         LinearLayout.LayoutParams overlineParams = wrap(); overlineParams.topMargin = dp(23);
         content.addView(overline, overlineParams);
         TextView time = label(new SimpleDateFormat("HH:mm", Locale.GERMANY).format(new Date()), 74, Color.WHITE, Typeface.BOLD);
@@ -172,27 +172,28 @@ public class AlarmActivity extends Activity implements SensorEventListener, NfcA
             LinearLayout.LayoutParams params = match(dp(51)); params.topMargin = dp(14); taskBox.addView(unavailable, params);
         }
         if(is("nfc") && nfcAdapter!=null) {
-            nfcAccess=button("Handy für NFC entsperren",PANEL,ICE);
+            nfcAccess=button("HANDY ENTSPERREN\nUND NFC STARTEN",palette.map(Color.rgb(201,220,248)),INK);
+            nfcAccess.setTextSize(18); nfcAccess.setGravity(Gravity.CENTER); nfcAccess.setAllCaps(false);
             nfcAccess.setOnClickListener(v -> {
                 if(!nfcAdapter.isEnabled()) { startActivity(new Intent(Settings.ACTION_NFC_SETTINGS));return; }
                 KeyguardManager guard=getSystemService(KeyguardManager.class);
                 guard.requestDismissKeyguard(this,new KeyguardManager.KeyguardDismissCallback() {
-                    @Override public void onDismissSucceeded() { enableReader(); }
+                    @Override public void onDismissSucceeded() { challengeStatus.setText("NFC bereit · halte die Rückseite an deinen angelernten Tag."); enableReader(); }
                     @Override public void onDismissCancelled() { challengeStatus.setText("Der Wecker klingelt weiter. Entsperre das Handy, um NFC zu verwenden."); }
                     @Override public void onDismissError() { challengeStatus.setText("Bitte das Handy entsperren und die Wecker-Benachrichtigung öffnen."); }
                 });
             });
-            LinearLayout.LayoutParams accessParams=match(dp(54));accessParams.topMargin=dp(14);
+            LinearLayout.LayoutParams accessParams=match(dp(112));accessParams.topMargin=dp(14);
             taskBox.addView(nfcAccess,accessParams);
         }
         content.addView(taskBox, matchWrap());
 
         if (getIntent().getBooleanExtra("snoozeEnabled", true)) {
             int snoozeMinutes = AlarmScheduler.nextSnoozeMinutes(getIntent());
-            Button snooze = button(snoozeMinutes + (snoozeMinutes == 1 ? " MINUTE SPÄTER" : " MINUTEN SPÄTER"), Color.TRANSPARENT, palette.map(Color.rgb(145, 169, 190)));
-            snooze.setBackgroundColor(Color.TRANSPARENT);
+            Button snooze = button("SNOOZE · " + snoozeMinutes + (snoozeMinutes == 1 ? " MINUTE" : " MINUTEN"), palette.map(Color.rgb(201, 220, 248)), INK);
+            snooze.setTextSize(16);
             snooze.setOnClickListener(v -> { if (!completed && AlarmRingingService.dismiss(this,session,true)) { completed=true;finishAndRemoveTask(); } });
-            LinearLayout.LayoutParams snoozeParams = match(dp(48)); snoozeParams.topMargin = dp(3); content.addView(snooze, snoozeParams);
+            LinearLayout.LayoutParams snoozeParams = match(dp(62)); snoozeParams.topMargin = dp(18); content.addView(snooze, snoozeParams);
         }
 
         ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true);
@@ -254,14 +255,15 @@ public class AlarmActivity extends Activity implements SensorEventListener, NfcA
         if (!resumed || completed || !is("nfc")) return;
         if(nfcAdapter==null) { challengeStatus.setText("Dieses Handy unterstützt NFC nicht.");return; }
         boolean enabled=nfcAdapter.isEnabled();
-        boolean locked=getSystemService(KeyguardManager.class).isKeyguardLocked();
+        boolean locked=getSystemService(KeyguardManager.class).isDeviceLocked();
         if(nfcAccess!=null) {
             nfcAccess.setVisibility(!enabled || locked ? View.VISIBLE : View.GONE);
             nfcAccess.setText(!enabled ? "NFC einschalten" : "Handy für NFC entsperren");
         }
         if(!enabled) { challengeStatus.setText("NFC ist ausgeschaltet. Schalte es ein, der Wecker klingelt weiter.");return; }
-        challengeStatus.setText(locked ? "Handy gesperrt · falls NFC nicht reagiert, zuerst hier entsperren."
+        challengeStatus.setText(locked ? "Entsperre zuerst sicher das Handy. Danach startet der NFC-Scan automatisch."
             : "NFC bereit · halte die Rückseite an deinen angelernten Tag.");
+        if(locked)return;
         try {
             nfcAdapter.enableReaderMode(this,this,NfcAdapter.FLAG_READER_NFC_A | NfcAdapter.FLAG_READER_NFC_B
                 | NfcAdapter.FLAG_READER_NFC_F | NfcAdapter.FLAG_READER_NFC_V

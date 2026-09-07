@@ -4,7 +4,7 @@ import type { FormEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSheetSwipe } from "./useSheetSwipe";
 import NumberField from "./NumberField";
-import { changeHabitResult, calendarState, scopeFlag } from "./workflow";
+import { changeHabitResult, calendarState, deterministicIndex, rewardProgress, scopeFlag, streakFromDates } from "./workflow";
 
 type Screen = "home" | "alarms" | "coach" | "todos" | "blocker" | "settings" | "qr";
 type CoachTab = "analysis" | "rhythm";
@@ -14,6 +14,9 @@ type StandbyWidget = "clock" | "alarm" | "calendar" | "rhythm" | "cycles" | "sle
 type SheetKind = "alarm" | "todo" | "settings" | "choose";
 type Todo = { id: string; text: string; done: boolean; createdAt: number; completedAt?: number; reminderAt?: string };
 type Habit = { id: string; text: string; completedDates: string[]; missedDates: string[]; createdAt: number };
+type QuestDifficulty = "easy" | "medium" | "hard";
+type DailyQuest = { id: string; title: string; detail: string; category: string; difficulty: QuestDifficulty; xp: number };
+type QuestProgress = { enabled: boolean; difficulty: QuestDifficulty | "mixed"; completedDates: string[]; xp: number; rewardMinutesAvailable: number };
 type Alarm = {
   id: string;
   time: string;
@@ -86,12 +89,14 @@ type Settings = {
   focusPackages: string[];
   focusSilenceNotifications: boolean;
   consistencyMode: "habits" | "todos" | "both";
+  questRewardMinutes: number;
+  questRewardCap: number;
 };
 type AlarmDraft = Omit<Alarm, "id" | "createdAt" | "qrToken"> & { id?: string };
 type AppWindow = { start: string; end: string };
 type BlockerScope = "instant" | "limits" | "windows";
 type BlockerMethod = "nfc" | "qr" | "password";
-type BlockerState = { methods: Partial<Record<BlockerScope, BlockerMethod>>; hasPasswords: Partial<Record<BlockerScope, boolean>>; enabled: boolean; limitsEnabled: boolean; windowsEnabled: boolean; packages: string[]; nfcToken: string; method: "nfc" | "qr" | "password"; qrToken: string; limits: Record<string, number>; windows: Record<string, AppWindow>; hasPassword: boolean; limitReminderEnabled: boolean; limitReminderMinutes: number };
+type BlockerState = { methods: Partial<Record<BlockerScope, BlockerMethod>>; hasPasswords: Partial<Record<BlockerScope, boolean>>; enabled: boolean; limitsEnabled: boolean; windowsEnabled: boolean; packages: string[]; nfcToken: string; method: "nfc" | "qr" | "password"; qrToken: string; limits: Record<string, number>; windows: Record<string, AppWindow>; hasPassword: boolean; limitReminderEnabled: boolean; limitReminderMinutes: number; rewardMinutesAvailable: number };
 type InstalledApp = { packageName: string; label: string; icon?: string };
 type FocusState = { active: boolean; ringing: boolean; phase: "work" | "break"; workMinutes: number; breakMinutes: number; rounds: number; round: number; endAt: number; silenceNotifications?: boolean };
 type PermissionState = { liveSupported?: boolean; liveEnabled?: boolean; notifications: boolean; exact: boolean; fullScreen: boolean; camera: boolean; dnd: boolean };
@@ -183,7 +188,20 @@ const initialSettings: Settings = {
   focusPackages: [],
   focusSilenceNotifications: false,
   consistencyMode: "habits",
+  questRewardMinutes: 5,
+  questRewardCap: 30,
 };
+const questPortfolio: DailyQuest[] = [
+  { id: "walk-10", title: "10 Minuten spazieren", detail: "Ohne Scrollen, nur du und ein kurzer Weg.", category: "Bewegung", difficulty: "easy", xp: 20 },
+  { id: "pushups", title: "10 Liegestütze", detail: "Am Stück oder in zwei kleinen Sätzen.", category: "Bewegung", difficulty: "easy", xp: 20 },
+  { id: "desk", title: "Schreibtisch zurücksetzen", detail: "Räume die Arbeitsfläche komplett frei.", category: "Ordnung", difficulty: "easy", xp: 20 },
+  { id: "laundry", title: "Eine Wäsche-Aufgabe erledigen", detail: "Waschen, aufhängen oder zusammenlegen zählt.", category: "Haushalt", difficulty: "medium", xp: 30 },
+  { id: "room-15", title: "15 Minuten Zimmer-Reset", detail: "Timer an und alles sichtbar Unordentliche angehen.", category: "Ordnung", difficulty: "medium", xp: 30 },
+  { id: "clean", title: "Komplett frisch machen", detail: "Duschen, rasieren oder Pflege – bewusst statt nebenbei.", category: "Selbstfürsorge", difficulty: "medium", xp: 30 },
+  { id: "outside-30", title: "30 Minuten rausgehen", detail: "Ein längerer Spaziergang ohne Social Media.", category: "Bewegung", difficulty: "hard", xp: 45 },
+  { id: "deep-work", title: "45 Minuten echte Fokuszeit", detail: "Eine wichtige Sache, Benachrichtigungen aus.", category: "Fokus", difficulty: "hard", xp: 45 },
+  { id: "call", title: "Melde dich bei jemandem", detail: "Eine echte Nachricht oder ein kurzer Anruf.", category: "Soziales", difficulty: "medium", xp: 30 },
+];
 const navItems: { id: Screen; icon: string; label: string }[] = [
   { id: "home", icon: "⌂", label: "Start" },
   { id: "alarms", icon: "◴", label: "Wecker" },
@@ -316,6 +334,7 @@ export default function App() {
   const [alarms, setAlarms] = useState<Alarm[]>([]);
   const [todos, setTodos] = useState<Todo[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]);
+  const [questProgress, setQuestProgress] = useState<QuestProgress>({ enabled: true, difficulty: "mixed", completedDates: [], xp: 0, rewardMinutesAvailable: 0 });
   const [checkins, setCheckins] = useState<Checkin[]>([]);
   const [pendingWake, setPendingWake] = useState<PendingWake | null>(null);
   const [settings, setSettings] = useState<Settings>(initialSettings);
@@ -344,7 +363,7 @@ export default function App() {
   const [nativeCompleted, setNativeCompleted] = useState<string[]>([]);
   const [qrMatrix, setQrMatrix] = useState<{ size: number; bits: string } | null>(null);
   const [sheetClosing, setSheetClosing] = useState(false);
-  const [blocker, setBlocker] = useState<BlockerState>({ methods: {}, hasPasswords: {}, enabled: false, limitsEnabled: false, windowsEnabled: false, packages: [], nfcToken: "", method: "nfc", qrToken: "wachwerk-personal-code", limits: {}, windows: {}, hasPassword: false, limitReminderEnabled: false, limitReminderMinutes: 10 });
+  const [blocker, setBlocker] = useState<BlockerState>({ methods: {}, hasPasswords: {}, enabled: false, limitsEnabled: false, windowsEnabled: false, packages: [], nfcToken: "", method: "nfc", qrToken: "wachwerk-personal-code", limits: {}, windows: {}, hasPassword: false, limitReminderEnabled: false, limitReminderMinutes: 10, rewardMinutesAvailable: 0 });
   const [blockerPassword, setBlockerPassword] = useState("");
   const [focusState, setFocusState] = useState<FocusState>({ active: false, ringing: false, phase: "work", workMinutes: 45, breakMinutes: 5, rounds: 1, round: 1, endAt: 0 });
   const [permissions, setPermissions] = useState<PermissionState>({ notifications: true, exact: true, fullScreen: true, camera: true, dnd: false });
@@ -388,7 +407,7 @@ export default function App() {
       }
       const saved = window.localStorage.getItem(STORAGE_KEY);
       if (saved) {
-        const data = JSON.parse(saved) as Partial<{ alarms: Alarm[]; todos: Todo[]; habits: Habit[]; checkins: Checkin[]; settings: Settings; blocker: BlockerState; standby: { clock: "digital" | "analog"; font?: "apple" | "soft" | "mono"; tone: "blue" | "amber" | "mint" | "rose"; left: StandbyWidget; right: StandbyWidget } }>;
+        const data = JSON.parse(saved) as Partial<{ alarms: Alarm[]; todos: Todo[]; habits: Habit[]; questProgress: QuestProgress; checkins: Checkin[]; settings: Settings; blocker: BlockerState; standby: { clock: "digital" | "analog"; font?: "apple" | "soft" | "mono"; tone: "blue" | "amber" | "mint" | "rose"; left: StandbyWidget; right: StandbyWidget } }>;
         const mergedSettings = { ...initialSettings, ...(data.settings ?? {}) };
         if (!mergedSettings.alarmNfcToken) mergedSettings.alarmNfcToken = data.alarms?.find(alarm => alarm.nfcToken)?.nfcToken || data.blocker?.nfcToken || "";
         setSettings(mergedSettings);
@@ -397,7 +416,7 @@ export default function App() {
           snoozeEnabled: alarm.snoozeEnabled ?? mergedSettings.snoozeEnabled, snoozeMinutes: alarm.snoozeMinutes ?? mergedSettings.snoozeMinutes,
           snoozeAggressive: alarm.snoozeAggressive ?? mergedSettings.snoozeAggressive,
           snoozeMinimumMinutes: alarm.snoozeMinimumMinutes ?? mergedSettings.snoozeMinimumMinutes })));
-        setTodos((data.todos ?? []).map(todo => ({ ...todo, reminderAt: todo.reminderAt ?? "", completedAt: todo.completedAt ?? (todo.done ? todo.createdAt : undefined) }))); setHabits((data.habits ?? []).map(habit => ({ ...habit, completedDates: habit.completedDates ?? [], missedDates: habit.missedDates ?? [] }))); setCheckins(data.checkins ?? []);
+        setTodos((data.todos ?? []).map(todo => ({ ...todo, reminderAt: todo.reminderAt ?? "", completedAt: todo.completedAt ?? (todo.done ? todo.createdAt : undefined) }))); setHabits((data.habits ?? []).map(habit => ({ ...habit, completedDates: habit.completedDates ?? [], missedDates: habit.missedDates ?? [] }))); setQuestProgress(current => ({ ...current, ...(data.questProgress ?? {}) })); setCheckins(data.checkins ?? []);
         if (data.blocker) setBlocker(current => ({ ...current, ...data.blocker, limits: data.blocker!.limits ?? {}, windows: data.blocker!.windows ?? {} }));
         if (data.standby) {
           setStandbyClock(data.standby.clock); setStandbyTone(data.standby.tone);
@@ -410,7 +429,7 @@ export default function App() {
       if (wakeKey) { const key = JSON.parse(wakeKey); setSettings(current => ({ ...current, alarmNfcToken: key.nfcToken || current.alarmNfcToken, qrVerified: key.qrVerified || current.qrVerified })); }
       applyNativeState(window.WachwerkAndroid?.getNativeState?.());
       const nativeBlocker = window.WachwerkAndroid?.getBlockerState?.();
-      if (nativeBlocker) setBlocker(current => ({ ...current, ...(JSON.parse(nativeBlocker) as Partial<BlockerState>) }));
+      if (nativeBlocker) { const state = JSON.parse(nativeBlocker) as Partial<BlockerState>; setBlocker(current => ({ ...current, ...state })); if (typeof state.rewardMinutesAvailable === "number") setQuestProgress(current => ({ ...current, rewardMinutesAvailable: state.rewardMinutesAvailable! })); }
       const nativeFocus = window.WachwerkAndroid?.getFocusTimerState?.();
       if (nativeFocus) setFocusState(current => ({ ...current, ...(JSON.parse(nativeFocus) as Partial<FocusState>) }));
       const nativePermissions = window.WachwerkAndroid?.getAlarmPermissionState?.();
@@ -457,6 +476,7 @@ export default function App() {
     const listener = (event: Event) => {
       const detail = (event as CustomEvent<Partial<BlockerState>>).detail;
       setBlocker(current => ({ ...current, ...detail }));
+      if (typeof detail.rewardMinutesAvailable === "number") setQuestProgress(current => ({ ...current, rewardMinutesAvailable: detail.rewardMinutesAvailable! }));
       if (detail.nfcToken) setSettings(current => current.alarmNfcToken ? current : ({ ...current, alarmNfcToken: detail.nfcToken! }));
     };
     window.addEventListener("wachwerk-blocker-state", listener);
@@ -505,13 +525,14 @@ export default function App() {
   }, [hydrated, nativeCompleted]);
   useEffect(() => {
     if (!hydrated) return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ alarms, todos, habits, checkins, settings, blocker, standby: { clock: standbyClock, font: standbyFont, tone: standbyTone, left: standbyLeft, right: standbyRight } }));
+    const blockerWithRewards = { ...blocker, rewardMinutesAvailable: questProgress.rewardMinutesAvailable };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ alarms, todos, habits, questProgress, checkins, settings, blocker: blockerWithRewards, standby: { clock: standbyClock, font: standbyFont, tone: standbyTone, left: standbyLeft, right: standbyRight } }));
     try { window.WachwerkAndroid?.syncAlarms(JSON.stringify(alarms)); } catch { /* Browser preview */ }
     try { window.WachwerkAndroid?.syncBedtime(settings.remindersOn, settings.bedtime, settings.reminderInterval, settings.reminderMinimumInterval, settings.sleepDetectMinutes, settings.nagMode, settings.reminderMessage); } catch { /* Browser preview */ }
     try { window.WachwerkAndroid?.syncTodos?.(JSON.stringify(todos)); } catch { /* Browser preview */ }
     try { window.WachwerkAndroid?.syncSettings?.(JSON.stringify(settings)); } catch { /* Browser preview */ }
-    try { window.WachwerkAndroid?.syncAppBlocker?.(JSON.stringify(blocker)); } catch { /* Browser preview */ }
-  }, [hydrated, alarms, todos, habits, checkins, settings, blocker, standbyClock, standbyFont, standbyTone, standbyLeft, standbyRight]);
+    try { window.WachwerkAndroid?.syncAppBlocker?.(JSON.stringify(blockerWithRewards)); } catch { /* Browser preview */ }
+  }, [hydrated, alarms, todos, habits, questProgress, checkins, settings, blocker, standbyClock, standbyFont, standbyTone, standbyLeft, standbyRight]);
   useEffect(() => { scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" }); }, [screen, coachTab]);
   useEffect(() => {
     const orientation = window.matchMedia("(orientation: landscape)");
@@ -590,6 +611,13 @@ export default function App() {
   }, [cycleMode, cycleTime, now, settings.cycleMinutes, settings.fallAsleepMinutes]);
   const visibleTodos = todoTab === "habits" ? [] : todos.filter(todo => todo.done === (todoTab === "done"));
   const filteredApps = installedApps.filter(app => `${app.label} ${app.packageName}`.toLocaleLowerCase("de-DE").includes(appSearch.trim().toLocaleLowerCase("de-DE")));
+  const todayKey = localDate(now);
+  const questChoices = questPortfolio.filter(quest => questProgress.difficulty === "mixed" || quest.difficulty === questProgress.difficulty);
+  const dailyQuest = questChoices[deterministicIndex(todayKey, questChoices.length)] ?? questPortfolio[0];
+  const questDoneToday = questProgress.completedDates.includes(todayKey);
+  const questStreak = streakFromDates(questProgress.completedDates, todayKey);
+  const questLevel = Math.floor(questProgress.xp / 100) + 1;
+  const questLevelProgress = questProgress.xp % 100;
 
   function itemTime(date: Date | null) { return date?.getTime() ?? Number.MAX_SAFE_INTEGER; }
   function showToast(message: string) { setToast(message); window.setTimeout(() => setToast(""), 2400); }
@@ -696,6 +724,13 @@ export default function App() {
     const today = localDate();
     setHabits(current => current.map(habit => habit.id !== id ? habit : changeHabitResult(habit, today, failed)));
   }
+  function completeDailyQuest() {
+    if (questDoneToday) return;
+    const reward = rewardProgress(questProgress.xp, dailyQuest.xp, 100, settings.questRewardMinutes, questProgress.rewardMinutesAvailable, settings.questRewardCap);
+    setQuestProgress(current => ({ ...current, completedDates: [...current.completedDates, todayKey], xp: reward.xp, rewardMinutesAvailable: reward.availableMinutes }));
+    setBlocker(current => ({ ...current, rewardMinutesAvailable: reward.availableMinutes }));
+    showToast(reward.earnedMinutes ? `Quest geschafft · +${dailyQuest.xp} XP · +${reward.earnedMinutes} Bonusminuten` : `Quest geschafft · +${dailyQuest.xp} XP`);
+  }
   function habitStreak(habit: Habit) {
     let streak = 0;
     const cursor = new Date();
@@ -765,6 +800,17 @@ export default function App() {
     }
   }
 
+  function renderQuestCard(compact = false) {
+    if (!questProgress.enabled) return null;
+    return <section className={`daily-quest ${questDoneToday ? "complete" : ""} ${compact ? "compact" : ""}`}>
+      <div className="quest-top"><div><span className="overline">TAGESQUEST · {dailyQuest.category.toUpperCase()}</span><h3>{questDoneToday ? "Heute durchgezogen" : dailyQuest.title}</h3></div><span className="quest-xp">+{dailyQuest.xp} XP</span></div>
+      <p>{questDoneToday ? "Die nächste Überraschungsquest erscheint morgen." : dailyQuest.detail}</p>
+      <div className="quest-level"><span>Level {questLevel}</span><div><i style={{ width: `${questLevelProgress}%` }} /></div><strong>{questLevelProgress}/100 XP</strong></div>
+      <div className="quest-stats"><span>🔥 {questStreak} Tage</span><span>🎟 {questProgress.rewardMinutesAvailable} Bonusminuten</span></div>
+      {!questDoneToday && <button type="button" className="quest-complete" onClick={completeDailyQuest}>Quest geschafft</button>}
+    </section>;
+  }
+
   function renderHome() {
     const next = upcoming[0];
     return <>
@@ -778,6 +824,7 @@ export default function App() {
       <div className="bento-grid"><button type="button" className="metric-card mint" onClick={() => { setScreen("coach"); setCoachTab("analysis"); }}><span className="card-icon">↗</span><strong>{checkins.length ? `${analysis.success}%` : "–"}</strong><p>{checkins.length ? "direkt aufgestanden" : "noch keine Daten"}</p></button><button type="button" className="metric-card dark" onClick={() => { setScreen("coach"); setCoachTab("rhythm"); }}><span className="card-icon">◴</span><strong>{checkins.length ? formatDuration(analysis.need) : "–"}</strong><p>{checkins.length ? "geschätzter Schlafbedarf" : "lernt mit jedem Check"}</p></button></div>
       <section className={`morning-check ${pendingWake ? "ready" : ""}`}><div><span className="overline">MORGENCHECK</span><h3>{pendingWake ? `Wie lief das Aufstehen um ${pendingWake.plannedTime}?` : "Wie lief das Aufstehen?"}</h3><p>{pendingWake ? "Deine Antwort verbessert die persönliche Berechnung." : "Erscheint nach einem wirklich beendeten Wecker."}</p></div><div className="mood-row two">{([{ id: "great", icon: "↑", label: "Direkt auf" }, { id: "miss", icon: "×", label: "Verschlafen" }] as const).map(item => <button type="button" key={item.id} disabled={!pendingWake} onClick={() => logCheckin(item.id)}><span>{item.icon}</span><small>{item.label}</small></button>)}</div></section>
       <section className="home-todo-preview"><div className="home-todo-title"><div><span className="overline">HEUTE</span><h3>Deine To-dos</h3></div><button type="button" onClick={() => setScreen("todos")}>Alle ansehen →</button></div>{todos.filter(todo => !todo.done).slice(0, 3).length ? todos.filter(todo => !todo.done).slice(0, 3).map(todo => <button type="button" key={todo.id} className="home-todo-row" onClick={() => toggleTodo(todo.id)}><i /> <span>{todo.text}</span></button>) : <button type="button" className="home-todo-empty" onClick={() => { setScreen("todos"); setTodoTab("open"); }}>Alles erledigt · neue Aufgabe hinzufügen</button>}<div className="habit-summary"><span>{habits.filter(habit => !habit.completedDates.includes(localDate()) && !habit.missedDates.includes(localDate())).length}</span><small>Habits heute noch offen</small></div></section>
+      {renderQuestCard(true)}
     </>;
   }
 
@@ -844,7 +891,7 @@ export default function App() {
     });
     const openCount = todos.filter(item => !item.done).length + habits.filter(habit => !habit.completedDates.includes(localDate()) && !habit.missedDates.includes(localDate())).length;
     const openHabits = habits.filter(habit => !habit.completedDates.includes(localDate()) && !habit.missedDates.includes(localDate()));
-    return <><ScreenHeader eyebrow="FOKUS" title="Deine Aufgaben" action="＋" onAction={() => { resetSheet(); setChooseTodo(true); }} /><section className="consistency-card"><div><span className="overline">KONSTANZ</span><h3>{now.toLocaleDateString("de-DE", { month: "long", year: "numeric" })}</h3></div><div className="consistency-weekdays">{["M","D","M","D","F","S","S"].map((day,index) => <span key={index}>{day}</span>)}</div><div className="consistency-grid">{heatmap.map((day,index) => day ? <i key={day.key} className={day.state} title={`${day.key}: ${day.state === "complete" ? "geschafft" : day.state === "missed" ? "nicht geschafft" : "keine Einträge"}`}>{day.day}</i> : <i key={`blank-${index}`} className="blank" />)}</div><div className="consistency-legend"><span><i className="complete" /> geschafft</span><span><i className="missed" /> nicht geschafft</span></div></section><div className="segmented-control todo-tabs"><button type="button" className={todoTab === "open" ? "active" : ""} onClick={() => setTodoTab("open")}>Offen · {openCount}</button><button type="button" className={todoTab === "habits" ? "active" : ""} onClick={() => setTodoTab("habits")}>Habits · {habits.length}</button><button type="button" className={todoTab === "done" ? "active" : ""} onClick={() => setTodoTab("done")}>Erledigt · {todos.filter(item => item.done).length}</button></div>{todoTab === "open" && <><section className="open-habits">{openHabits.map(habit => renderHabitRow(habit))}</section><section className="todo-list">{todos.filter(todo => !todo.done).length ? todos.filter(todo => !todo.done).map(todo => <article key={todo.id}><button type="button" className="todo-check" onClick={() => toggleTodo(todo.id)} /><div className="todo-copy"><span>{todo.text}</span>{todo.reminderAt && <small>◴ {new Date(todo.reminderAt).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</small>}</div><button type="button" className="todo-delete" aria-label="Aufgabe löschen" onClick={() => setTodos(current => current.filter(item => item.id !== todo.id))}><TrashIcon /></button></article>) : !openHabits.length && <div className="empty-state"><span>✓</span><h3>Alles frei</h3></div>}</section></>}{todoTab === "habits" && <section className="habit-list">{habits.length ? habits.map(habit => renderHabitRow(habit, true)) : <div className="empty-state"><span>↻</span><h3>Noch keine Habits</h3><p>Über Plus legst du ein tägliches Ziel an.</p></div>}</section>}{todoTab === "done" && <section className="todo-list">{todos.filter(todo => todo.done).length ? todos.filter(todo => todo.done).map(todo => <article key={todo.id} className="done"><button type="button" className="todo-check" onClick={() => toggleTodo(todo.id)}>✓</button><div className="todo-copy"><span>{todo.text}</span></div><button type="button" className="todo-delete" aria-label="Aufgabe löschen" onClick={() => setTodos(current => current.filter(item => item.id !== todo.id))}><TrashIcon /></button></article>) : <div className="empty-state"><span>✓</span><h3>Noch nichts erledigt</h3></div>}</section>}</>;
+    return <><ScreenHeader eyebrow="FOKUS" title="Deine Aufgaben" action="＋" onAction={() => { resetSheet(); setChooseTodo(true); }} />{renderQuestCard()}<section className="consistency-card"><div><span className="overline">KONSTANZ</span><h3>{now.toLocaleDateString("de-DE", { month: "long", year: "numeric" })}</h3></div><div className="consistency-weekdays">{["M","D","M","D","F","S","S"].map((day,index) => <span key={index}>{day}</span>)}</div><div className="consistency-grid">{heatmap.map((day,index) => day ? <i key={day.key} className={day.state} title={`${day.key}: ${day.state === "complete" ? "geschafft" : day.state === "missed" ? "nicht geschafft" : "keine Einträge"}`}>{day.day}</i> : <i key={`blank-${index}`} className="blank" />)}</div><div className="consistency-legend"><span><i className="complete" /> geschafft</span><span><i className="missed" /> nicht geschafft</span></div></section><div className="segmented-control todo-tabs"><button type="button" className={todoTab === "open" ? "active" : ""} onClick={() => setTodoTab("open")}>Offen · {openCount}</button><button type="button" className={todoTab === "habits" ? "active" : ""} onClick={() => setTodoTab("habits")}>Habits · {habits.length}</button><button type="button" className={todoTab === "done" ? "active" : ""} onClick={() => setTodoTab("done")}>Erledigt · {todos.filter(item => item.done).length}</button></div>{todoTab === "open" && <><section className="open-habits">{openHabits.map(habit => renderHabitRow(habit))}</section><section className="todo-list">{todos.filter(todo => !todo.done).length ? todos.filter(todo => !todo.done).map(todo => <article key={todo.id}><button type="button" className="todo-check" onClick={() => toggleTodo(todo.id)} /><div className="todo-copy"><span>{todo.text}</span>{todo.reminderAt && <small>◴ {new Date(todo.reminderAt).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</small>}</div><button type="button" className="todo-delete" aria-label="Aufgabe löschen" onClick={() => setTodos(current => current.filter(item => item.id !== todo.id))}><TrashIcon /></button></article>) : !openHabits.length && <div className="empty-state"><span>✓</span><h3>Alles frei</h3></div>}</section></>}{todoTab === "habits" && <section className="habit-list">{habits.length ? habits.map(habit => renderHabitRow(habit, true)) : <div className="empty-state"><span>↻</span><h3>Noch keine Habits</h3><p>Über Plus legst du ein tägliches Ziel an.</p></div>}</section>}{todoTab === "done" && <section className="todo-list">{todos.filter(todo => todo.done).length ? todos.filter(todo => todo.done).map(todo => <article key={todo.id} className="done"><button type="button" className="todo-check" onClick={() => toggleTodo(todo.id)}>✓</button><div className="todo-copy"><span>{todo.text}</span></div><button type="button" className="todo-delete" aria-label="Aufgabe löschen" onClick={() => setTodos(current => current.filter(item => item.id !== todo.id))}><TrashIcon /></button></article>) : <div className="empty-state"><span>✓</span><h3>Noch nichts erledigt</h3></div>}</section>}</>;
   }
 
   function renderSettings() {
@@ -854,10 +901,11 @@ export default function App() {
       <section className="settings-card"><span className="overline">NACH DEM AUFSTEHEN</span>{numberSetting("morning-delay", "Morgencheck nach", settings.morningDelay, value => setSettings(current => ({ ...current, morningDelay: value })), 0)}<p className="field-help">0 Minuten bedeutet sofort. Beim Antippen öffnet sich genau der Check für den letzten Wecker.</p></section>
       <section className="settings-card"><span className="overline">SCHLAFBERECHNUNG</span>{numberSetting("cycle-minutes", "Minuten je Schlafzyklus", settings.cycleMinutes, value => setSettings(current => ({ ...current, cycleMinutes: value })), 30, 240)}{numberSetting("sleep-onset", "Einschlafzeit", settings.fallAsleepMinutes, value => setSettings(current => ({ ...current, fallAsleepMinutes: value })), 0, 180)}<p className="field-help">Diese Werte werden im Schnellplaner verwendet und sind jederzeit änderbar.</p></section>
       <section className="settings-card"><span className="overline">ERFOLGSANZEIGE IM KALENDER</span><label className="field-label" htmlFor="consistency-mode">Wann soll ein Tag grün werden?</label><select id="consistency-mode" value={settings.consistencyMode} onChange={event => setSettings(current => ({ ...current, consistencyMode: event.target.value as Settings["consistencyMode"] }))}><option value="habits">Alle Habits geschafft</option><option value="todos">Alle To-dos geschafft</option><option value="both">Alle Habits und To-dos geschafft</option></select><p className="field-help">Standardmäßig bewertet MACH nur deine täglichen Habits.</p></section>
+      <section className="settings-card"><span className="overline">TAGESQUESTS & BELOHNUNGEN</span><div className="switch-row"><div><strong>Tägliche Überraschungsquest</strong><small>Eine lokale Aufgabe pro Kalendertag</small></div><Toggle on={questProgress.enabled} label="Tagesquests" onClick={() => setQuestProgress(current => ({ ...current, enabled: !current.enabled }))} /></div><label className="field-label" htmlFor="quest-difficulty">Schwierigkeit</label><select id="quest-difficulty" value={questProgress.difficulty} onChange={event => setQuestProgress(current => ({ ...current, difficulty: event.target.value as QuestProgress["difficulty"] }))}><option value="mixed">Gemischt</option><option value="easy">Leicht</option><option value="medium">Mittel</option><option value="hard">Anspruchsvoll</option></select><div className="number-grid"><NumberField label="Bonus je 100 XP" value={settings.questRewardMinutes} min={0} max={60} onCommit={value => setSettings(current => ({ ...current, questRewardMinutes: value }))} /><NumberField label="Bonus-Limit" value={settings.questRewardCap} min={0} max={240} onCommit={value => setSettings(current => ({ ...current, questRewardCap: value }))} /></div><p className="field-help">XP, Serie und Bonusminuten bleiben ausschließlich auf diesem Handy und funktionieren ohne Account.</p></section>
       {permissions.liveSupported && !permissions.liveEnabled && <section className="settings-card"><h3>Fokus als Live-Anzeige</h3><p className="field-help">Erlaube Live-Benachrichtigungen, damit Android den Timer zusätzlich neben der Uhr anzeigen kann.</p><button type="button" className="secondary-button" onClick={() => window.WachwerkAndroid?.openLiveNotificationSettings?.()}>Live-Anzeige erlauben</button></section>}
       <section className="settings-card"><span className="overline">APP-ZEIT VERBLEIBEND</span><div className="switch-row"><div><strong>Restzeit regelmäßig melden</strong><small>Nur für Apps mit aktivem Tageslimit</small></div><Toggle on={blocker.limitReminderEnabled} label="App-Restzeit erinnern" onClick={() => setBlocker(current => ({ ...current, limitReminderEnabled: !current.limitReminderEnabled }))} /></div>{blocker.limitReminderEnabled && <NumberField label="Erinnerung alle" value={blocker.limitReminderMinutes} min={1} max={1440} onCommit={value => setBlocker(current => ({ ...current, limitReminderMinutes: value }))} />}<p className="field-help">Der Abstand zählt die tatsächlich genutzte Zeit. MACH nennt dir dabei die noch übrigen Minuten.</p></section>
       <section className="settings-card"><span className="overline">AUFWACH-SCHLÜSSEL</span><h3>{settings.alarmNfcToken ? "NFC-Tag gespeichert" : "NFC-Tag einmal anlernen"}</h3><p className="field-help">Ein gespeicherter Tag steht für alle neuen NFC-Wecker bereit.</p><button type="button" className="secondary-button" onClick={() => enrollNfc("alarm")}>{settings.alarmNfcToken ? "Anderen Tag einrichten" : "Tag anlernen"}</button></section>
-      <section className="settings-card"><span className="overline">STANDARD FÜR NEUE WECKER</span><label className="field-label" htmlFor="default-day">Vorausgewähltes Datum</label><select id="default-day" value={settings.defaultAlarmDay} onChange={event => setSettings(current => ({ ...current, defaultAlarmDay: event.target.value as Settings["defaultAlarmDay"] }))}><option value="today">Heute</option><option value="tomorrow">Morgen</option></select><label className="field-label" htmlFor="default-challenge">Aufwach-Aufgabe</label><select id="default-challenge" value={settings.defaultChallenge} onChange={event => setSettings(current => ({ ...current, defaultChallenge: event.target.value as Challenge }))}>{Object.entries(challengeNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><div className="number-grid">{numberSetting("shake-count", "Schüttelbewegungen", settings.shakeCount, value => setSettings(current => ({ ...current, shakeCount: value })), 3, 200, "×")}{numberSetting("hold-seconds", "Display halten", settings.holdSeconds, value => setSettings(current => ({ ...current, holdSeconds: value })), 3, 120, "Sek.")}{numberSetting("snake-seconds", "Schlange folgen", settings.snakeSeconds, value => setSettings(current => ({ ...current, snakeSeconds: value })), 3, 120, "Sek.")}</div><div className="switch-row"><div><strong>Snooze anbieten</strong><small>Kann bei jedem Wecker einzeln geändert werden</small></div><Toggle on={settings.snoozeEnabled} label="Snooze" onClick={() => setSettings(current => ({ ...current, snoozeEnabled: !current.snoozeEnabled }))} /></div>{settings.snoozeEnabled && <><div className="number-grid">{numberSetting("snooze-minutes", "Erste Snooze-Zeit", settings.snoozeMinutes, value => setSettings(current => ({ ...current, snoozeMinutes: value, snoozeMinimumMinutes: Math.min(current.snoozeMinimumMinutes, value) })), 1)}{settings.snoozeAggressive && numberSetting("snooze-minimum", "Kleinste Snooze-Zeit", settings.snoozeMinimumMinutes, value => setSettings(current => ({ ...current, snoozeMinimumMinutes: Math.min(value, current.snoozeMinutes) })), 1)}</div><div className="switch-row"><div><strong>Snooze wird aggressiver</strong><small>Der Abstand halbiert sich bis zum Minimum</small></div><Toggle on={settings.snoozeAggressive} label="Aggressiver Snooze" onClick={() => setSettings(current => ({ ...current, snoozeAggressive: !current.snoozeAggressive }))} /></div></>}<label className="field-label" htmlFor="default-sound">Alarmton</label><select id="default-sound" value={settings.sound} onChange={event => setSettings(current => ({ ...current, sound: event.target.value }))}>{settings.sound.startsWith("custom:") && <option value={settings.sound}>{soundLabel(settings.sound)}</option>}<option>Systemstandard</option><option>Sanft</option><option>Klar</option><option>Kräftig</option></select><div className="dual-actions"><button type="button" className={`secondary-button ${soundPreviewing ? "preview-stop" : ""}`} onClick={previewAlarmSound}>{soundPreviewing ? "■ Stoppen" : "▶ Anhören"}</button><button type="button" className="file-picker-button" onClick={chooseAlarmSound}>＋ Eigene Datei</button></div>{soundPreviewing && <div className="sound-preview-status"><i /><span>Tonvorschau läuft</span><button type="button" onClick={previewAlarmSound}>Beenden</button></div>}<p className="field-help">Eine eigene Datei wird lokal in MACH kopiert und funktioniert danach offline.</p><div className="switch-row"><div><strong>Sanftes Licht</strong><small>Ganzer Bildschirm wird warmweiß und immer heller</small></div><Toggle on={settings.gentleWake} label="Sanftes Licht" onClick={() => setSettings(current => ({ ...current, gentleWake: !current.gentleWake }))} /></div>{settings.gentleWake && numberSetting("gentle-minutes", "Licht startet vorher", settings.gentleMinutes, value => setSettings(current => ({ ...current, gentleMinutes: value })), 1, 180)}</section>
+      <section className="settings-card"><span className="overline">STANDARD FÜR NEUE WECKER</span><label className="field-label" htmlFor="default-day">Vorausgewähltes Datum</label><select id="default-day" value={settings.defaultAlarmDay} onChange={event => setSettings(current => ({ ...current, defaultAlarmDay: event.target.value as Settings["defaultAlarmDay"] }))}><option value="today">Heute</option><option value="tomorrow">Morgen</option></select><label className="field-label" htmlFor="default-challenge">Aufwach-Aufgabe</label><select id="default-challenge" value={settings.defaultChallenge} onChange={event => setSettings(current => ({ ...current, defaultChallenge: event.target.value as Challenge }))}>{Object.entries(challengeNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><div className="number-grid">{numberSetting("shake-count", "Schüttelbewegungen", settings.shakeCount, value => setSettings(current => ({ ...current, shakeCount: value })), 3, 200, "")}{numberSetting("hold-seconds", "Display halten", settings.holdSeconds, value => setSettings(current => ({ ...current, holdSeconds: value })), 3, 120, "Sek.")}{numberSetting("snake-seconds", "Schlange folgen", settings.snakeSeconds, value => setSettings(current => ({ ...current, snakeSeconds: value })), 3, 120, "Sek.")}</div><div className="switch-row"><div><strong>Snooze anbieten</strong><small>Kann bei jedem Wecker einzeln geändert werden</small></div><Toggle on={settings.snoozeEnabled} label="Snooze" onClick={() => setSettings(current => ({ ...current, snoozeEnabled: !current.snoozeEnabled }))} /></div>{settings.snoozeEnabled && <><div className="number-grid">{numberSetting("snooze-minutes", "Erste Snooze-Zeit", settings.snoozeMinutes, value => setSettings(current => ({ ...current, snoozeMinutes: value, snoozeMinimumMinutes: Math.min(current.snoozeMinimumMinutes, value) })), 1)}{settings.snoozeAggressive && numberSetting("snooze-minimum", "Kleinste Snooze-Zeit", settings.snoozeMinimumMinutes, value => setSettings(current => ({ ...current, snoozeMinimumMinutes: Math.min(value, current.snoozeMinutes) })), 1)}</div><div className="switch-row"><div><strong>Snooze wird aggressiver</strong><small>Der Abstand halbiert sich bis zum Minimum</small></div><Toggle on={settings.snoozeAggressive} label="Aggressiver Snooze" onClick={() => setSettings(current => ({ ...current, snoozeAggressive: !current.snoozeAggressive }))} /></div></>}<label className="field-label" htmlFor="default-sound">Alarmton</label><select id="default-sound" value={settings.sound} onChange={event => setSettings(current => ({ ...current, sound: event.target.value }))}>{settings.sound.startsWith("custom:") && <option value={settings.sound}>{soundLabel(settings.sound)}</option>}<option>Systemstandard</option><option>Sanft</option><option>Klar</option><option>Kräftig</option></select><div className="dual-actions"><button type="button" className={`secondary-button ${soundPreviewing ? "preview-stop" : ""}`} onClick={previewAlarmSound}>{soundPreviewing ? "■ Stoppen" : "▶ Anhören"}</button><button type="button" className="file-picker-button" onClick={chooseAlarmSound}>＋ Eigene Datei</button></div>{soundPreviewing && <div className="sound-preview-status"><i /><span>Tonvorschau läuft</span><button type="button" onClick={previewAlarmSound}>Beenden</button></div>}<p className="field-help">Eine eigene Datei wird lokal in MACH kopiert und funktioniert danach offline.</p><div className="switch-row"><div><strong>Sanftes Licht</strong><small>Ganzer Bildschirm wird warmweiß und immer heller</small></div><Toggle on={settings.gentleWake} label="Sanftes Licht" onClick={() => setSettings(current => ({ ...current, gentleWake: !current.gentleWake }))} /></div>{settings.gentleWake && numberSetting("gentle-minutes", "Licht startet vorher", settings.gentleMinutes, value => setSettings(current => ({ ...current, gentleMinutes: value })), 1, 180)}</section>
       {(!permissions.notifications || !permissions.exact || !permissions.fullScreen || !permissions.camera) && <section className="settings-card"><span className="overline">NOCH OFFENE BERECHTIGUNGEN</span>{!permissions.notifications && <div className="switch-row"><div><strong>Benachrichtigungen erlauben</strong><small>Für Wecker, Timer und Erinnerungen</small></div><button type="button" className="secondary-button compact" onClick={() => window.WachwerkAndroid?.openNotificationSettings?.()}>Öffnen</button></div>}{!permissions.exact && <div className="switch-row"><div><strong>Alarme & Erinnerungen</strong><small>Damit Wecker sekundengenau klingeln</small></div><button type="button" className="secondary-button compact" onClick={() => window.WachwerkAndroid?.openExactAlarmSettings?.()}>Öffnen</button></div>}{!permissions.fullScreen && <div className="switch-row"><div><strong>Vollbild-Wecker</strong><small>Damit der ausgeschaltete Bildschirm aufwacht</small></div><button type="button" className="secondary-button compact" onClick={() => window.WachwerkAndroid?.openFullScreenSettings?.()}>Öffnen</button></div>}{!permissions.camera && <div className="switch-row"><div><strong>Kamera für QR-Aufgabe</strong><small>Wird ausschließlich beim Scannen benutzt</small></div><button type="button" className="secondary-button compact" onClick={() => window.WachwerkAndroid?.requestCameraPermission?.()}>Erlauben</button></div>}<p className="field-help">Sobald eine Berechtigung erteilt ist, verschwindet ihr Hinweis automatisch.</p></section>}
 
     </>;

@@ -8,7 +8,7 @@
 
 MACH verbindet Wecker, Einschlaf-Erinnerungen, einen Standby-Modus, Fokus-Timer und einen App-Blocker mit To-dos und täglichen Habits. Das Ziel: aufstehen, anfangen und durchziehen – statt wieder zu verschieben.
 
-**Android 8.0+ · Offline · Kein Benutzerkonto · Version 1.13.0 · In Entwicklung**
+**Android 8.0+ · Offline · Kein Benutzerkonto · Version 1.14.0 · In Entwicklung**
 
 [Installation](docs/INSTALLATION.md) · [APK auf GitHub bauen](docs/GITHUB-ACTIONS.md) · [Selbst bauen](docs/ENTWICKLUNG.md) · [Änderungen](CHANGELOG.md) · [Datenschutz](docs/DATENSCHUTZ.md)
 
@@ -33,6 +33,7 @@ Abends fällt es schwer, das Handy wegzulegen. Morgens ist der Wecker schnell au
 | **Morgensperre** | Ausgewählte Apps nach einer erfolgreichen Aufwachaufgabe für eine selbst gewählte Dauer sperren. Andere Apps bleiben frei. |
 | **Fokus** | Arbeits- und Pausenzeiten, Runden, Countdown, optionale App-Sperren und Nicht-stören. |
 | **To-dos & Habits** | Aufgaben, Erinnerungen, tägliche Gewohnheiten und eine Monatsübersicht der Erfolge. |
+| **Tagesquests & Belohnungen** | Jeden Tag eine lokal gewählte Überraschungsaufgabe, dazu XP, Level, Serie und gedeckelte Bonusminuten. |
 | **Coach & Design** | Auswertung eigener Morgenchecks, verschiedene Farbpaletten, Schriften sowie Hoch- und Querformat. |
 
 Der Coach arbeitet mit deinen Einträgen und einstellbaren Annahmen. Er misst keine echten Schlafphasen und bestimmt keinen medizinisch validierten „perfekten“ Schlafbedarf.
@@ -45,7 +46,7 @@ Die installierbare Datei findest du im GitHub-Bereich **Releases** unter **Asset
 
 APK auf das Android-Handy laden, öffnen und die Installation für die verwendete Quelle erlauben. Bei einer vorhandenen MACH-Version als **Update** installieren – nicht vorher deinstallieren. Die ausführliche Anleitung erklärt auch die benötigten Android-Zugriffe: [Installation und erster Test](docs/INSTALLATION.md).
 
-> **Entwicklungsstand:** 25 Android-Unit-Tests und 5 Web-Logiktests bestanden beim Build von 1.13.0. NFC, Alarmton im Hintergrund und herstellerspezifisches Energiesparen müssen auf dem Zielgerät geprüft werden. Vor wichtigen Terminen zunächst einen Ersatzwecker verwenden.
+> **Entwicklungsstand:** 25 Android-Unit-Tests aus Version 1.13.0 sowie 8 Web-Logiktests. NFC, Alarmton im Hintergrund und herstellerspezifisches Energiesparen müssen auf dem Zielgerät geprüft werden. Vor wichtigen Terminen zunächst einen Ersatzwecker verwenden.
 
 ## Lokal – auch ohne Server
 

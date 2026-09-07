@@ -3,8 +3,12 @@
 ## Nächste Version
 
 - Neue Marke **MACH.** mit dem Leitsatz „Kein später.“
-- Neues App-Icon in Nachtblau, Rot und Orange.
+- Neues App-Icon passend zur App in Nachtblau, Mint, Eisblau und Weiß.
 - Der technische Paketname bleibt für kompatible Updates unverändert.
+- Tägliche lokale Quests mit XP, Level, Serie und gedeckelten Bonusminuten – bewusst ohne Spielfigur und ohne Konto.
+- Einheitlicher Sperrbildschirm startet NFC oder QR sofort und behandelt Direkt-, Limit- und Uhrzeitregeln getrennt.
+- NFC-Wecker fordert bei einem gesperrten Gerät zuerst klar zum sicheren Entsperren auf; Snooze ist als großer hellblauer Knopf sichtbar.
+- Mittig ausgerichtete Ziehgriffe in den App-Dialogen.
 
 ## 1.13.0 · 2. September 2026
 

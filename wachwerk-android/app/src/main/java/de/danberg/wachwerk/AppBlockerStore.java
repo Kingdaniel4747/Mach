@@ -23,6 +23,7 @@ public final class AppBlockerStore {
     private static final String LIMIT_REMINDERS = "limit_reminders";
     private static final String LIMIT_REMINDER_MINUTES = "limit_reminder_minutes";
     private static final String PASSWORD_HASH = "password_hash";
+    private static final String REWARD_MINUTES = "reward_minutes";
 
     private AppBlockerStore() {}
 
@@ -78,6 +79,7 @@ public final class AppBlockerStore {
                 .putString(WINDOWS, windowsActive ? windowsJson(context) : cleanWindows.toString())
                 .putBoolean(LIMIT_REMINDERS, data.optBoolean("limitReminderEnabled", false))
                 .putInt(LIMIT_REMINDER_MINUTES, Math.max(1, Math.min(1_440, data.optInt("limitReminderMinutes", 10))))
+                .putInt(REWARD_MINUTES, Math.max(0, Math.min(1_440, data.optInt("rewardMinutesAvailable", rewardMinutes(context)))))
                 .apply();
         } catch (Exception ignored) {}
     }
@@ -116,6 +118,12 @@ public final class AppBlockerStore {
     public static String windowsJson(Context context) { return prefs(context).getString(WINDOWS, "{}"); }
     public static boolean limitRemindersEnabled(Context context) { return prefs(context).getBoolean(LIMIT_REMINDERS, false); }
     public static int limitReminderMinutes(Context context) { return Math.max(1, prefs(context).getInt(LIMIT_REMINDER_MINUTES, 10)); }
+    public static int rewardMinutes(Context context) { return Math.max(0, prefs(context).getInt(REWARD_MINUTES, 0)); }
+    public static int consumeRewardMinutes(Context context, int requested) {
+        int used = Math.min(rewardMinutes(context), Math.max(0, requested));
+        prefs(context).edit().putInt(REWARD_MINUTES, rewardMinutes(context) - used).apply();
+        return used;
+    }
     public static boolean hasAllowedWindow(Context context, String packageName) {
         try { return new JSONObject(windowsJson(context)).has(packageName); } catch (Exception ignored) { return false; }
     }
@@ -155,6 +163,7 @@ public final class AppBlockerStore {
                 .put("method", method(context)).put("qrToken", qrToken(context)).put("hasPassword", hasPassword(context))
                 .put("limits", new JSONObject(limitsJson(context))).put("windows", new JSONObject(windowsJson(context)))
                 .put("limitReminderEnabled", limitRemindersEnabled(context)).put("limitReminderMinutes", limitReminderMinutes(context));
+            state.put("rewardMinutesAvailable", rewardMinutes(context));
             JSONObject methods = new JSONObject(), passwords = new JSONObject();
             for (String scope : new String[]{"instant", "limits", "windows"}) {
                 methods.put(scope, method(context, scope));

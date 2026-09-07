@@ -15,3 +15,35 @@ export function angleDelta(next: number, previous: number) {
   return delta;
 }
 export function scopeFlag(scope: "instant" | "limits" | "windows") { return scope === "limits" ? "limitsEnabled" : scope === "windows" ? "windowsEnabled" : "enabled"; }
+
+export function deterministicIndex(date: string, length: number, salt = "mach-daily-quest") {
+  if (length <= 0) return -1;
+  let hash = 2166136261;
+  for (const character of `${salt}:${date}`) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) % length;
+}
+
+export function streakFromDates(completedDates: string[], today: string) {
+  const completed = new Set(completedDates);
+  const cursor = new Date(`${today}T12:00:00`);
+  let streak = 0;
+  while (completed.has(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}-${String(cursor.getDate()).padStart(2, "0")}`)) {
+    streak++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+}
+
+export function rewardProgress(previousXp: number, earnedXp: number, interval: number, rewardMinutes: number, availableMinutes: number, cap: number) {
+  const safeInterval = Math.max(1, interval);
+  const nextXp = Math.max(0, previousXp) + Math.max(0, earnedXp);
+  const milestones = Math.floor(nextXp / safeInterval) - Math.floor(Math.max(0, previousXp) / safeInterval);
+  return {
+    xp: nextXp,
+    earnedMinutes: Math.max(0, milestones) * Math.max(0, rewardMinutes),
+    availableMinutes: Math.min(Math.max(0, cap), Math.max(0, availableMinutes) + Math.max(0, milestones) * Math.max(0, rewardMinutes)),
+  };
+}

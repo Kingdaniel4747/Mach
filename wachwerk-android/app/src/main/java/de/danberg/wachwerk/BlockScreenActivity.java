@@ -80,7 +80,6 @@ public class BlockScreenActivity extends Activity implements NfcAdapter.ReaderCa
         TextView info=text(appLabel(blockedPackage)+" wartet noch. Deine Morgensperre endet automatisch; andere Sperren bleiben unverändert.",16,palette.muted,Typeface.NORMAL);
         info.setGravity(Gravity.CENTER);root.addView(info,p);
         status=text("",58,palette.text,Typeface.BOLD);status.setGravity(Gravity.CENTER);root.addView(status,p);
-        Button home=smallButton("MACH öffnen");home.setOnClickListener(v->returnToBlocker());root.addView(home,p);
         android.widget.ScrollView scroll=new android.widget.ScrollView(this);scroll.setFillViewport(true);scroll.addView(root);setContentView(scroll);
     }
 
@@ -94,6 +93,7 @@ public class BlockScreenActivity extends Activity implements NfcAdapter.ReaderCa
 
     private void buildUi() {
         if ("morning".equals(blockReason)) { buildMorningUi(); return; }
+        if (("nfc".equals(method) || "qr".equals(method)) && !scanning) { beginScan(); return; }
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL); root.setGravity(Gravity.CENTER);
         root.setPadding(dp(28), dp(34), dp(28), dp(34));
@@ -119,15 +119,7 @@ public class BlockScreenActivity extends Activity implements NfcAdapter.ReaderCa
             : adapter == null ? "NFC ist auf diesem Handy nicht verfügbar." : "NFC bereit · warte auf den Tag …", 13, palette.map(Color.rgb(155, 245, 177)), Typeface.BOLD);
         status.setGravity(Gravity.CENTER); LinearLayout.LayoutParams statusParams = matchWrap(); statusParams.topMargin = dp(25); root.addView(status, statusParams);
         if (limitMode || scheduleMode) addUnlockDuration(root);
-        if ("nfc".equals(method)) {
-            Button scan = smallButton("Jetzt scannen"); scan.setTextSize(16); scan.setOnClickListener(v -> beginScan());
-            LinearLayout.LayoutParams params = compact(dp(48)); params.topMargin = dp(24); root.addView(scan, params);
-        }
-        if ("qr".equals(method)) {
-            Button scan = new Button(this); scan.setText("Jetzt scannen"); scan.setAllCaps(false); scan.setTypeface(Typeface.DEFAULT_BOLD); scan.setTextColor(palette.map(Color.rgb(6,19,31))); scan.setBackground(rounded(palette.map(Color.rgb(155,245,177)), 15));
-            scan.setOnClickListener(v -> beginScan());
-            LinearLayout.LayoutParams scanParams = compact(dp(48)); scanParams.topMargin = dp(20); root.addView(scan, scanParams);
-        } else if ("password".equals(method)) {
+        if ("password".equals(method)) {
             EditText password = new EditText(this); passwordField = password;
             password.setHint("Passwort"); password.setTextColor(Color.WHITE); password.setHintTextColor(palette.map(Color.rgb(120, 145, 166)));
             password.setSingleLine(true); password.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
@@ -140,9 +132,6 @@ public class BlockScreenActivity extends Activity implements NfcAdapter.ReaderCa
             });
             LinearLayout.LayoutParams verifyParams = compact(dp(48)); verifyParams.topMargin = dp(10); root.addView(verify, verifyParams);
         }
-        Button open = new Button(this); open.setText("MACH öffnen"); open.setAllCaps(false); open.setTypeface(Typeface.DEFAULT_BOLD); open.setTextColor(palette.map(Color.rgb(201,220,248))); open.setBackground(rounded(palette.map(Color.rgb(24,51,72)), 15));
-        open.setOnClickListener(v -> returnToBlocker());
-        LinearLayout.LayoutParams buttonParams = compact(dp(48)); buttonParams.topMargin = dp(48); root.addView(open, buttonParams);
         android.widget.ScrollView scroll = new android.widget.ScrollView(this); scroll.setFillViewport(true); scroll.addView(root); setContentView(scroll);
     }
 
@@ -167,17 +156,25 @@ public class BlockScreenActivity extends Activity implements NfcAdapter.ReaderCa
         scanning = true;
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setGravity(Gravity.CENTER);
         root.setPadding(dp(28),dp(36),dp(28),dp(28)); root.setBackgroundColor(palette.map(Color.rgb(6,19,31)));
+        TextView app=text(appLabel(blockedPackage),15,palette.muted,Typeface.BOLD);app.setGravity(Gravity.CENTER);root.addView(app,matchWrap());
+        TextView heading=text(limitMode ? "Tageslimit erreicht" : scheduleMode ? "Außerhalb deiner Nutzungszeit" : focusMode ? "Fokus läuft" : "App gesperrt",28,Color.WHITE,Typeface.BOLD);
+        heading.setGravity(Gravity.CENTER);LinearLayout.LayoutParams hp=matchWrap();hp.topMargin=dp(8);hp.bottomMargin=dp(22);root.addView(heading,hp);
         pulse = new ScanPulseView(this); root.addView(pulse, new LinearLayout.LayoutParams(dp(200),dp(200)));
         status = text("nfc".equals(method) ? "NFC-Tag jetzt an die Rückseite halten" : "Deinen QR-Code jetzt scannen",22,Color.WHITE,Typeface.BOLD);
         status.setGravity(Gravity.CENTER); LinearLayout.LayoutParams p=matchWrap();p.topMargin=dp(24);root.addView(status,p);
         if ("nfc".equals(method) && (adapter == null || !adapter.isEnabled())) {
             status.setText(adapter == null ? "Dieses Handy unterstützt kein NFC" : "Bitte NFC in den Schnelleinstellungen einschalten");
         }
-        if ("qr".equals(method)) {
-            Button retry=smallButton("Kamera öffnen");retry.setOnClickListener(v->openQr());LinearLayout.LayoutParams rp=match(dp(54));rp.topMargin=dp(22);root.addView(retry,rp);
+        if (limitMode || scheduleMode) addUnlockDuration(root);
+        int reward = AppBlockerStore.rewardMinutes(this);
+        if ((limitMode || scheduleMode) && reward > 0) {
+            Button bonus=smallButton("Quest-Bonus verwenden · "+reward+" Min. verfügbar");
+            bonus.setOnClickListener(v->{int used=AppBlockerStore.consumeRewardMinutes(this,Math.min(durationMinutes,reward));if(used>0){durationMinutes=used;completeUnlock(null);}});
+            LinearLayout.LayoutParams rp=match(dp(54));rp.topMargin=dp(14);root.addView(bonus,rp);
         }
-        Button back=smallButton("Zurück");back.setOnClickListener(v->{if(completed)return;scanning=false;if(adapter!=null)adapter.disableReaderMode(this);buildUi();});
-        LinearLayout.LayoutParams bp=match(dp(52));bp.topMargin=dp(40);root.addView(back,bp);
+        if ("qr".equals(method)) {
+            Button retry=smallButton("Kamera erneut öffnen");retry.setOnClickListener(v->openQr());LinearLayout.LayoutParams rp=match(dp(54));rp.topMargin=dp(20);root.addView(retry,rp);
+        }
         android.widget.ScrollView scroll=new android.widget.ScrollView(this);scroll.setFillViewport(true);scroll.addView(root);setContentView(scroll);enableReader();if("qr".equals(method))openQr();
     }
     private void openQr() { startActivityForResult(new Intent(this,QrScannerActivity.class).putExtra("expectedToken",AppBlockerStore.qrToken(this)),QR_REQUEST); }
@@ -252,7 +249,7 @@ public class BlockScreenActivity extends Activity implements NfcAdapter.ReaderCa
             save.setOnClickListener(w->{
                 durationMinutes=draft[0];duration.setText(durationMinutes+" Min.");dialog.dismiss();
                 if ("password".equals(method)) { passwordField.requestFocus(); ((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(passwordField,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT); }
-                else beginScan();
+                else if (!scanning) beginScan();
             });
             LinearLayout.LayoutParams p=match(dp(54));p.topMargin=dp(18);content.addView(save,p);
             android.widget.ScrollView scroll=new android.widget.ScrollView(this);scroll.addView(content);
