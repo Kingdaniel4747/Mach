@@ -1,5 +1,8 @@
 apply plugin: "com.android.application"
 
+def machVersionCode = (System.getenv("MACH_VERSION_CODE") ?: "16").toInteger()
+def machVersionName = System.getenv("MACH_VERSION_NAME") ?: "1.15.0"
+
 android {
     namespace "de.danberg.wachwerk"
     compileSdk 35
@@ -8,8 +11,8 @@ android {
         applicationId "de.danberg.wachwerk"
         minSdk 26
         targetSdk 35
-        versionCode 15
-        versionName "1.14.0"
+        versionCode machVersionCode
+        versionName machVersionName
     }
 
     signingConfigs {

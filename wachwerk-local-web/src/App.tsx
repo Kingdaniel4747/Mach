@@ -4,7 +4,7 @@ import type { FormEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSheetSwipe } from "./useSheetSwipe";
 import NumberField from "./NumberField";
-import { changeHabitResult, calendarState, deterministicIndex, rewardProgress, scopeFlag, streakFromDates } from "./workflow";
+import { bedtimeReminderTimestamp, changeHabitResult, calendarState, deterministicIndex, rewardProgress, scopeFlag, streakFromDates } from "./workflow";
 
 type Screen = "home" | "alarms" | "coach" | "todos" | "blocker" | "settings" | "qr";
 type CoachTab = "analysis" | "rhythm";
@@ -40,6 +40,8 @@ type Alarm = {
   snoozeAggressive: boolean;
   snoozeMinimumMinutes: number;
   plannedSleep?: string;
+  bedtimeReminderEnabled: boolean;
+  bedtimeReminderImmediate?: boolean;
 };
 type PendingWake = {
   eventId: string;
@@ -106,6 +108,7 @@ declare global {
     WachwerkAndroid?: {
       syncAlarms: (json: string) => void;
       syncBedtime: (enabled: boolean, time: string, interval: number, minimumInterval: number, sleepDetectMinutes: number, mode: string, message: string) => void;
+      startBedtimeNow?: (alarmId: string) => void;
       syncTodos?: (json: string) => void;
       syncSettings?: (json: string) => void;
       getNativeState?: () => string;
@@ -144,6 +147,8 @@ declare global {
       hasUsageAccess?: () => boolean;
       openAccessibilitySettings?: () => void;
       openUsageAccessSettings?: () => void;
+      createBackup?: (json: string) => void;
+      chooseBackup?: () => void;
     };
   }
 }
@@ -293,6 +298,7 @@ function defaultDraft(settings: Settings): AlarmDraft {
     holdSeconds: settings.holdSeconds, snakeSeconds: settings.snakeSeconds,
     snoozeEnabled: settings.snoozeEnabled, snoozeMinutes: settings.snoozeMinutes,
     snoozeAggressive: settings.snoozeAggressive, snoozeMinimumMinutes: settings.snoozeMinimumMinutes,
+    bedtimeReminderEnabled: false,
   };
 }
 function qrCell(row: number, col: number, seed: string) {
@@ -415,7 +421,8 @@ export default function App() {
           holdSeconds: alarm.holdSeconds ?? mergedSettings.holdSeconds, snakeSeconds: alarm.snakeSeconds ?? mergedSettings.snakeSeconds,
           snoozeEnabled: alarm.snoozeEnabled ?? mergedSettings.snoozeEnabled, snoozeMinutes: alarm.snoozeMinutes ?? mergedSettings.snoozeMinutes,
           snoozeAggressive: alarm.snoozeAggressive ?? mergedSettings.snoozeAggressive,
-          snoozeMinimumMinutes: alarm.snoozeMinimumMinutes ?? mergedSettings.snoozeMinimumMinutes })));
+          snoozeMinimumMinutes: alarm.snoozeMinimumMinutes ?? mergedSettings.snoozeMinimumMinutes,
+          bedtimeReminderEnabled: alarm.bedtimeReminderEnabled ?? (alarm.source === "cycle") })));
         setTodos((data.todos ?? []).map(todo => ({ ...todo, reminderAt: todo.reminderAt ?? "", completedAt: todo.completedAt ?? (todo.done ? todo.createdAt : undefined) }))); setHabits((data.habits ?? []).map(habit => ({ ...habit, completedDates: habit.completedDates ?? [], missedDates: habit.missedDates ?? [] }))); setQuestProgress(current => ({ ...current, ...(data.questProgress ?? {}) })); setCheckins(data.checkins ?? []);
         if (data.blocker) setBlocker(current => ({ ...current, ...data.blocker, limits: data.blocker!.limits ?? {}, windows: data.blocker!.windows ?? {} }));
         if (data.standby) {
@@ -509,6 +516,18 @@ export default function App() {
     const listener = (event: Event) => setSoundPreviewing(Boolean((event as CustomEvent<{ playing?: boolean }>).detail?.playing));
     window.addEventListener("wachwerk-sound-preview", listener);
     return () => window.removeEventListener("wachwerk-sound-preview", listener);
+  }, []);
+  useEffect(() => {
+    const listener = (event: Event) => {
+      const backup = (event as CustomEvent<{ format?: string; state?: unknown }>).detail;
+      if (backup?.format !== "mach-backup" || !backup.state || typeof backup.state !== "object") { showToast("Diese Datei ist kein gültiges MACH-Backup"); return; }
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(backup.state));
+      window.localStorage.setItem(SCHEMA_KEY, "3");
+      showToast("Backup wiederhergestellt · MACH startet neu");
+      window.setTimeout(() => window.location.reload(), 700);
+    };
+    window.addEventListener("mach-backup-import", listener);
+    return () => window.removeEventListener("mach-backup-import", listener);
   }, []);
   useEffect(() => {
     const listener = (event: Event) => {
@@ -649,6 +668,21 @@ export default function App() {
     else window.setTimeout(() => setSoundPreviewing(false), 3_000);
     setSoundPreviewing(true);
   }
+  function createBackup() {
+    const safeSettings = { ...settings, alarmNfcToken: "", qrVerified: false, sound: settings.sound.startsWith("custom:") ? "Systemstandard" : settings.sound };
+    const safeAlarms = alarms.map(alarm => ({ ...alarm, nfcToken: "", sound: alarm.sound.startsWith("custom:") ? "Systemstandard" : alarm.sound }));
+    const safeBlocker = { ...blocker, nfcToken: "", hasPassword: false, hasPasswords: {}, rewardMinutesAvailable: questProgress.rewardMinutesAvailable };
+    const state = { alarms: safeAlarms, todos, habits, questProgress, checkins, settings: safeSettings, blocker: safeBlocker, standby: { clock: standbyClock, font: standbyFont, tone: standbyTone, left: standbyLeft, right: standbyRight } };
+    const backup = JSON.stringify({ format: "mach-backup", version: 1, exportedAt: new Date().toISOString(), state });
+    if (window.WachwerkAndroid?.createBackup) window.WachwerkAndroid.createBackup(backup);
+    else {
+      const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([backup], { type: "application/json" })); link.download = `MACH-Backup-${localDate()}.json`; link.click(); URL.revokeObjectURL(link.href);
+    }
+  }
+  function chooseBackup() {
+    if (window.WachwerkAndroid?.chooseBackup) window.WachwerkAndroid.chooseBackup();
+    else showToast("Backups lassen sich in der installierten APK auswählen");
+  }
   function enrollNfc(target: "alarm" | "blocker") {
     nfcTargetRef.current = target;
     if (window.WachwerkAndroid?.enrollNfcTag) window.WachwerkAndroid.enrollNfcTag(target);
@@ -703,6 +737,14 @@ export default function App() {
     if (!alarmDraft.days.length && new Date(`${alarmDraft.date}T${alarmDraft.time}:00`).getTime() <= Date.now()) { showToast("Diese Uhrzeit liegt bereits in der Vergangenheit"); return; }
     const saved: Alarm = { ...alarmDraft, id: alarmDraft.id ?? uid("alarm"), createdAt: Date.now(), qrToken: "wachwerk-personal-code" };
     setAlarms(current => alarmDraft.id ? current.map(item => item.id === alarmDraft.id ? saved : item) : [...current, saved]);
+    if (saved.bedtimeReminderEnabled) {
+      let startImmediately = Boolean(saved.bedtimeReminderImmediate);
+      if (!startImmediately && !saved.days.length && saved.date && saved.plannedSleep) {
+        const plan = bedtimeReminderTimestamp(saved.date, saved.time, saved.plannedSleep);
+        startImmediately = plan.reminderAt <= Date.now() && plan.wakeAt > Date.now();
+      }
+      if (startImmediately) window.WachwerkAndroid?.startBedtimeNow?.(saved.id);
+    }
     setAlarmDraft(null); showToast(alarmDraft.id ? "Wecker aktualisiert" : `Wecker für ${saved.time} gespeichert`);
   }
   function deleteAlarm(id: string) { setAlarms(current => current.filter(alarm => alarm.id !== id)); setAlarmDraft(null); showToast("Wecker gelöscht"); }
@@ -788,7 +830,7 @@ export default function App() {
     const choice = cycleSuggestions.find(item => item.cycles === selectedCycle) ?? cycleSuggestions[1];
     if (cycleMode === "sleep") {
       const wakeDate = new Date(now.getTime() + (selectedCycle * settings.cycleMinutes + settings.fallAsleepMinutes) * 60_000);
-      setAlarmDraft({ ...defaultDraft(settings), time: choice.time, date: localDate(wakeDate), source: "cycle", plannedSleep: `${pad(now.getHours())}:${pad(now.getMinutes())}` });
+      setAlarmDraft({ ...defaultDraft(settings), time: choice.time, date: localDate(wakeDate), source: "cycle", plannedSleep: `${pad(now.getHours())}:${pad(now.getMinutes())}`, bedtimeReminderEnabled: true, bedtimeReminderImmediate: true });
     }
     else {
       const [hours, minutes] = cycleTime.split(":").map(Number);
@@ -796,7 +838,7 @@ export default function App() {
       wakeDate.setHours(hours, minutes, 0, 0);
       if (wakeDate.getTime() <= now.getTime()) wakeDate.setDate(wakeDate.getDate() + 1);
       resetSheet();
-      setAlarmDraft({ ...defaultDraft(settings), time: cycleTime, date: localDate(wakeDate), label: "Zyklus-Wecker", source: "cycle", plannedSleep: choice.time });
+      setAlarmDraft({ ...defaultDraft(settings), time: cycleTime, date: localDate(wakeDate), label: "Zyklus-Wecker", source: "cycle", plannedSleep: choice.time, bedtimeReminderEnabled: true, bedtimeReminderImmediate: false });
     }
   }
 
@@ -897,11 +939,12 @@ export default function App() {
   function renderSettings() {
     const numberSetting = (id: string, label: string, value: number, update: (value: number) => void, min = 1, max = 1440, unit = "Min.") => <NumberField id={id} label={label} value={value} onCommit={update} min={min} max={max} unit={unit} />;
     return <><ScreenHeader eyebrow="WACHWERK" title="Einstellungen" /><section className="settings-card"><label className="field-label" htmlFor="profile-name">Dein Name</label><input id="profile-name" type="text" placeholder="Optional" value={settings.name} onChange={event => setSettings(current => ({ ...current, name: event.target.value }))} /><label className="field-label" htmlFor="app-font">Schrift in der App</label><select id="app-font" value={settings.appFont} onChange={event => setSettings(current => ({ ...current, appFont: event.target.value as Settings["appFont"] }))}><option value="modern">Modern</option><option value="rounded">Weich & rund</option><option value="classic">Klassisch</option></select><label className="field-label">Farbpalette</label><div className="palette-options" role="group" aria-label="Farbpalette">{([{ id: "classic", name: "Original", colors: ["#06131f", "#c9dcf8", "#9bf5b1", "#ffd347"] }, { id: "solar", name: "Sonnenwärme", colors: ["#003049", "#d62828", "#f77f00", "#fcbf49", "#eae2b7"] }, { id: "dusk", name: "Abendruhe", colors: ["#191629", "#c2b2f1", "#90cdb7", "#edd9bc"] }] as const).map(palette => <button type="button" key={palette.id} aria-pressed={settings.palette === palette.id} className={settings.palette === palette.id ? "selected" : ""} onClick={() => setSettings(current => ({ ...current, palette: palette.id }))}><span className="palette-swatches">{palette.colors.map(color => <i key={color} style={{ background: color }} />)}</span><strong>{palette.name}</strong><span className="palette-check">{settings.palette === palette.id ? "✓" : ""}</span></button>)}</div></section>
-      <section className="settings-card"><div className="switch-row"><div><strong>Schlafenszeit-Erinnerungen</strong><small>Bleiben bei eingeschaltetem Bildschirm hartnäckig aktiv</small></div><Toggle on={settings.remindersOn} label="Schlafenszeit-Erinnerungen" onClick={() => setSettings(current => ({ ...current, remindersOn: !current.remindersOn }))} /></div><label className="field-label">Ab wann soll Ruhe sein?</label><TimePicker label="Schlafenszeit" value={settings.bedtime} onChange={value => setSettings(current => ({ ...current, bedtime: value }))} /><div className="choice-row"><button type="button" className={settings.nagMode === "fixed" ? "active" : ""} onClick={() => setSettings(current => ({ ...current, nagMode: "fixed" }))}>Gleichmäßig</button><button type="button" className={settings.nagMode === "urgent" ? "active" : ""} onClick={() => setSettings(current => ({ ...current, nagMode: "urgent" }))}>Immer kürzer</button></div>{numberSetting("interval", settings.nagMode === "fixed" ? "Erinnerung alle" : "Erster Abstand", settings.reminderInterval, value => setSettings(current => ({ ...current, reminderInterval: value, reminderMinimumInterval: Math.min(current.reminderMinimumInterval, value) })), 1)}{settings.nagMode === "urgent" && numberSetting("minimum-interval", "Kleinster Abstand", settings.reminderMinimumInterval, value => setSettings(current => ({ ...current, reminderMinimumInterval: Math.min(value, current.reminderInterval) })), 1)}{numberSetting("sleep-detect", "Als Schlaf erkannt nach", settings.sleepDetectMinutes, value => setSettings(current => ({ ...current, sleepDetectMinutes: value })), 5, 720)}<label className="field-label" htmlFor="message">Nachricht</label><textarea id="message" rows={3} value={settings.reminderMessage} onChange={event => setSettings(current => ({ ...current, reminderMessage: event.target.value }))} /><p className="field-help">Ist der Bildschirm so lange aus, gilt das Handy als weggelegt. Dann endet die Erinnerung bis zur nächsten eingestellten Schlafenszeit. Ein klingelnder Wecker beendet sie ebenfalls.</p></section>
+      <section className="settings-card"><span className="overline">EINSCHLAF-ERINNERUNGEN</span><div className="switch-row"><div><strong>Zusätzlicher täglicher Plan</strong><small>Zyklus-Wecker steuern ihre Erinnerung automatisch</small></div><Toggle on={settings.remindersOn} label="Tägliche Schlafenszeit-Erinnerungen" onClick={() => setSettings(current => ({ ...current, remindersOn: !current.remindersOn }))} /></div>{settings.remindersOn && <><label className="field-label">Täglich ab</label><TimePicker label="Schlafenszeit" value={settings.bedtime} onChange={value => setSettings(current => ({ ...current, bedtime: value }))} /></>}<div className="choice-row"><button type="button" className={settings.nagMode === "fixed" ? "active" : ""} onClick={() => setSettings(current => ({ ...current, nagMode: "fixed" }))}>Gleichmäßig</button><button type="button" className={settings.nagMode === "urgent" ? "active" : ""} onClick={() => setSettings(current => ({ ...current, nagMode: "urgent" }))}>Immer kürzer</button></div>{numberSetting("interval", settings.nagMode === "fixed" ? "Erinnerung alle" : "Erster Abstand", settings.reminderInterval, value => setSettings(current => ({ ...current, reminderInterval: value, reminderMinimumInterval: Math.min(current.reminderMinimumInterval, value) })), 1)}{settings.nagMode === "urgent" && numberSetting("minimum-interval", "Kleinster Abstand", settings.reminderMinimumInterval, value => setSettings(current => ({ ...current, reminderMinimumInterval: Math.min(value, current.reminderInterval) })), 1)}{numberSetting("sleep-detect", "Als Schlaf erkannt nach", settings.sleepDetectMinutes, value => setSettings(current => ({ ...current, sleepDetectMinutes: value })), 5, 720)}<label className="field-label" htmlFor="message">Nachricht</label><textarea id="message" rows={3} value={settings.reminderMessage} onChange={event => setSettings(current => ({ ...current, reminderMessage: event.target.value }))} /><p className="field-help">Ist der Bildschirm so lange aus, gilt das Handy als weggelegt. Dann endet die Erinnerung bis zur nächsten eingestellten Schlafenszeit. Ein klingelnder Wecker beendet sie ebenfalls.</p></section>
       <section className="settings-card"><span className="overline">NACH DEM AUFSTEHEN</span>{numberSetting("morning-delay", "Morgencheck nach", settings.morningDelay, value => setSettings(current => ({ ...current, morningDelay: value })), 0)}<p className="field-help">0 Minuten bedeutet sofort. Beim Antippen öffnet sich genau der Check für den letzten Wecker.</p></section>
       <section className="settings-card"><span className="overline">SCHLAFBERECHNUNG</span>{numberSetting("cycle-minutes", "Minuten je Schlafzyklus", settings.cycleMinutes, value => setSettings(current => ({ ...current, cycleMinutes: value })), 30, 240)}{numberSetting("sleep-onset", "Einschlafzeit", settings.fallAsleepMinutes, value => setSettings(current => ({ ...current, fallAsleepMinutes: value })), 0, 180)}<p className="field-help">Diese Werte werden im Schnellplaner verwendet und sind jederzeit änderbar.</p></section>
       <section className="settings-card"><span className="overline">ERFOLGSANZEIGE IM KALENDER</span><label className="field-label" htmlFor="consistency-mode">Wann soll ein Tag grün werden?</label><select id="consistency-mode" value={settings.consistencyMode} onChange={event => setSettings(current => ({ ...current, consistencyMode: event.target.value as Settings["consistencyMode"] }))}><option value="habits">Alle Habits geschafft</option><option value="todos">Alle To-dos geschafft</option><option value="both">Alle Habits und To-dos geschafft</option></select><p className="field-help">Standardmäßig bewertet MACH nur deine täglichen Habits.</p></section>
       <section className="settings-card"><span className="overline">TAGESQUESTS & BELOHNUNGEN</span><div className="switch-row"><div><strong>Tägliche Überraschungsquest</strong><small>Eine lokale Aufgabe pro Kalendertag</small></div><Toggle on={questProgress.enabled} label="Tagesquests" onClick={() => setQuestProgress(current => ({ ...current, enabled: !current.enabled }))} /></div><label className="field-label" htmlFor="quest-difficulty">Schwierigkeit</label><select id="quest-difficulty" value={questProgress.difficulty} onChange={event => setQuestProgress(current => ({ ...current, difficulty: event.target.value as QuestProgress["difficulty"] }))}><option value="mixed">Gemischt</option><option value="easy">Leicht</option><option value="medium">Mittel</option><option value="hard">Anspruchsvoll</option></select><div className="number-grid"><NumberField label="Bonus je 100 XP" value={settings.questRewardMinutes} min={0} max={60} onCommit={value => setSettings(current => ({ ...current, questRewardMinutes: value }))} /><NumberField label="Bonus-Limit" value={settings.questRewardCap} min={0} max={240} onCommit={value => setSettings(current => ({ ...current, questRewardCap: value }))} /></div><p className="field-help">XP, Serie und Bonusminuten bleiben ausschließlich auf diesem Handy und funktionieren ohne Account.</p></section>
+      <section className="settings-card backup-card"><span className="overline">BACKUP & WIEDERHERSTELLUNG</span><h3>Fortschritt mitnehmen</h3><p className="field-help">Exportiert Wecker, Einstellungen, Aufgaben, Habits, Coach-Daten, Quests und Blocker-Regeln als lokale JSON-Datei. Android-Berechtigungen, Passwörter, eigene Audiodateien und NFC-Hardwarezugriffe werden aus Sicherheitsgründen nicht kopiert.</p><div className="dual-actions"><button type="button" className="primary-button" onClick={createBackup}>Backup speichern</button><button type="button" className="secondary-button" onClick={chooseBackup}>Backup einspielen</button></div></section>
       {permissions.liveSupported && !permissions.liveEnabled && <section className="settings-card"><h3>Fokus als Live-Anzeige</h3><p className="field-help">Erlaube Live-Benachrichtigungen, damit Android den Timer zusätzlich neben der Uhr anzeigen kann.</p><button type="button" className="secondary-button" onClick={() => window.WachwerkAndroid?.openLiveNotificationSettings?.()}>Live-Anzeige erlauben</button></section>}
       <section className="settings-card"><span className="overline">APP-ZEIT VERBLEIBEND</span><div className="switch-row"><div><strong>Restzeit regelmäßig melden</strong><small>Nur für Apps mit aktivem Tageslimit</small></div><Toggle on={blocker.limitReminderEnabled} label="App-Restzeit erinnern" onClick={() => setBlocker(current => ({ ...current, limitReminderEnabled: !current.limitReminderEnabled }))} /></div>{blocker.limitReminderEnabled && <NumberField label="Erinnerung alle" value={blocker.limitReminderMinutes} min={1} max={1440} onCommit={value => setBlocker(current => ({ ...current, limitReminderMinutes: value }))} />}<p className="field-help">Der Abstand zählt die tatsächlich genutzte Zeit. MACH nennt dir dabei die noch übrigen Minuten.</p></section>
       <section className="settings-card"><span className="overline">AUFWACH-SCHLÜSSEL</span><h3>{settings.alarmNfcToken ? "NFC-Tag gespeichert" : "NFC-Tag einmal anlernen"}</h3><p className="field-help">Ein gespeicherter Tag steht für alle neuen NFC-Wecker bereit.</p><button type="button" className="secondary-button" onClick={() => enrollNfc("alarm")}>{settings.alarmNfcToken ? "Anderen Tag einrichten" : "Tag anlernen"}</button></section>
@@ -971,8 +1014,9 @@ export default function App() {
         <label className="field-label" htmlFor="alarm-label">Bezeichnung</label><input id="alarm-label" type="text" value={alarmDraft.label} onChange={event => setAlarmDraft(current => current ? { ...current, label: event.target.value } : current)} />
         <div className="choice-row"><button type="button" className={!recurring ? "active" : ""} onClick={() => setAlarmDraft(current => current ? { ...current, days: [], date: current.date || (settings.defaultAlarmDay === "today" ? localDate() : tomorrow()) } : current)}>Einmalig</button><button type="button" className={recurring ? "active" : ""} onClick={() => setAlarmDraft(current => current ? { ...current, days: [1,2,3,4,5], date: "" } : current)}>Wiederholen</button></div>
         {recurring ? <div className="weekday-row">{[1,2,3,4,5,6,0].map(day => <button type="button" key={day} className={alarmDraft.days.includes(day) ? "active" : ""} onClick={() => setAlarmDraft(current => current ? { ...current, days: current.days.includes(day) ? current.days.filter(value => value !== day) : [...current.days, day].sort() } : current)}>{weekdayNames[day].slice(0,1)}</button>)}</div> : <><label className="field-label" htmlFor="alarm-date">Datum</label><input id="alarm-date" type="date" min={localDate()} value={alarmDraft.date} onChange={event => setAlarmDraft(current => current ? { ...current, date: event.target.value } : current)} /></>}
+        <section className="alarm-bedtime-plan"><div className="switch-row"><div><strong>Ans Schlafengehen erinnern</strong><small>{alarmDraft.source === "cycle" ? "Bei Zyklus-Weckern immer aktiv" : "Nur für diesen Wecker"}</small></div>{alarmDraft.source !== "cycle" && <Toggle on={alarmDraft.bedtimeReminderEnabled} label="Schlafenszeit-Erinnerung" onClick={() => setAlarmDraft(current => current ? { ...current, bedtimeReminderEnabled: !current.bedtimeReminderEnabled, plannedSleep: current.plannedSleep || settings.bedtime, bedtimeReminderImmediate: false } : current)} />}</div>{alarmDraft.bedtimeReminderEnabled && (alarmDraft.bedtimeReminderImmediate ? <div className="bedtime-now"><strong>Startet sofort</strong><span>und endet, sobald das Handy lange genug weggelegt wurde</span></div> : <><label className="field-label">Ab dieser Schlafenszeit</label><TimePicker label="Erinnerung beginnt" value={alarmDraft.plannedSleep || settings.bedtime} onChange={value => setAlarmDraft(current => current ? { ...current, plannedSleep: value, bedtimeReminderImmediate: false } : current)} /></>)}</section>
         <label className="field-label" htmlFor="alarm-challenge">So beweise ich, dass ich wach bin</label><select id="alarm-challenge" value={alarmDraft.challenge} onChange={event => setAlarmDraft(current => current ? { ...current, challenge: event.target.value as Challenge } : current)}>{Object.entries(challengeNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-        {alarmDraft.challenge === "shake" && <NumberField label="Kräftige Bewegungen" value={alarmDraft.shakeCount} min={3} max={200} unit="×" onCommit={value => setAlarmDraft(current => current ? { ...current, shakeCount: value } : current)} />}
+        {alarmDraft.challenge === "shake" && <NumberField label="Kräftige Bewegungen" value={alarmDraft.shakeCount} min={3} max={200} unit="" onCommit={value => setAlarmDraft(current => current ? { ...current, shakeCount: value } : current)} />}
         {alarmDraft.challenge === "hold" && <NumberField label="Display halten" value={alarmDraft.holdSeconds} min={3} max={120} unit="Sek." onCommit={value => setAlarmDraft(current => current ? { ...current, holdSeconds: value } : current)} />}
         {alarmDraft.challenge === "snake" && <NumberField label="Schlange verfolgen" value={alarmDraft.snakeSeconds} min={3} max={120} unit="Sek." onCommit={value => setAlarmDraft(current => current ? { ...current, snakeSeconds: value } : current)} />}
         {alarmDraft.challenge === "nfc" && <section className={`nfc-enroll ${alarmDraft.nfcToken ? "ready" : ""}`}><div><strong>{alarmDraft.nfcToken ? "NFC-Tag bereit" : "NFC-Tag vorbereiten"}</strong><small>{alarmDraft.nfcToken ? "Nur dieser Tag beendet den Wecker." : "Halte den gewünschten Tag kurz an die Rückseite. Der Tag wird nicht beschrieben."}</small></div>{!alarmDraft.nfcToken && <button type="button" onClick={() => enrollNfc("alarm")}>Einmal anlernen</button>}</section>}

@@ -56,7 +56,9 @@ import org.json.JSONArray;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -72,6 +74,8 @@ public class MainActivity extends Activity {
     public static final String FOCUS_PROGRESS_CHANNEL = "wachwerk_focus_progress";
     public static final String LIMIT_CHANNEL = "wachwerk_app_limits";
     private static final int CUSTOM_SOUND_REQUEST = 4302;
+    private static final int BACKUP_CREATE_REQUEST = 4304;
+    private static final int BACKUP_OPEN_REQUEST = 4305;
     private static final int CAMERA_PERMISSION_REQUEST = 4303;
     private static final int NFC_ENROLL_REQUEST = 4401;
     private static final int NFC_BLOCKER_SCAN_REQUEST = 4402;
@@ -91,6 +95,7 @@ public class MainActivity extends Activity {
     private volatile String installedAppsCache = "[]";
     private volatile boolean installedAppsLoaded;
     private volatile boolean installedAppsLoading;
+    private String pendingBackupJson = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -353,6 +358,11 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void startBedtimeNow(String alarmId) {
+            BedtimeReceiver.startNow(getApplicationContext(), alarmId);
+        }
+
+        @JavascriptInterface
         public void syncTodos(String json) {
             TodoReminderScheduler.sync(getApplicationContext(), json);
             if (json != null && json.matches("(?s).*\\\"reminderAt\\\":\\\"[^\\\"]+.*") && !AlarmScheduler.canScheduleExact(MainActivity.this)) {
@@ -428,6 +438,29 @@ public class MainActivity extends Activity {
                 } catch (Exception error) {
                     Toast.makeText(MainActivity.this, "Auf diesem Gerät wurde keine Audio-Auswahl gefunden.", Toast.LENGTH_LONG).show();
                 }
+            });
+        }
+
+        @JavascriptInterface
+        public void createBackup(String json) {
+            if (json == null || json.length() > 5_000_000) return;
+            pendingBackupJson = json;
+            handler.post(() -> {
+                try {
+                    Intent picker = new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+                        .setType("application/json").putExtra(Intent.EXTRA_TITLE, "MACH-Backup-" + new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT).format(new java.util.Date()) + ".json");
+                    startActivityForResult(picker, BACKUP_CREATE_REQUEST);
+                } catch (Exception error) { Toast.makeText(MainActivity.this, "Backup-Datei konnte nicht erstellt werden.", Toast.LENGTH_LONG).show(); }
+            });
+        }
+
+        @JavascriptInterface
+        public void chooseBackup() {
+            handler.post(() -> {
+                try {
+                    Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json");
+                    startActivityForResult(picker, BACKUP_OPEN_REQUEST);
+                } catch (Exception error) { Toast.makeText(MainActivity.this, "Backup-Datei konnte nicht geöffnet werden.", Toast.LENGTH_LONG).show(); }
             });
         }
 
@@ -737,6 +770,32 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == BACKUP_CREATE_REQUEST) {
+            if (resultCode == RESULT_OK && data != null && data.getData() != null && !pendingBackupJson.isEmpty()) {
+                try (OutputStream output = getContentResolver().openOutputStream(data.getData(), "wt")) {
+                    if (output == null) throw new IllegalStateException("Kein Ausgabestrom");
+                    output.write(pendingBackupJson.getBytes(StandardCharsets.UTF_8));
+                    Toast.makeText(this, "MACH-Backup gespeichert", Toast.LENGTH_SHORT).show();
+                } catch (Exception error) { Toast.makeText(this, "Backup konnte nicht gespeichert werden.", Toast.LENGTH_LONG).show(); }
+            }
+            pendingBackupJson = "";
+            return;
+        }
+        if (requestCode == BACKUP_OPEN_REQUEST) {
+            if (resultCode == RESULT_OK && data != null && data.getData() != null) {
+                try (InputStream input = getContentResolver().openInputStream(data.getData()); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+                    if (input == null) throw new IllegalStateException("Kein Eingabestrom");
+                    byte[] buffer = new byte[16_384]; int count, total = 0;
+                    while ((count = input.read(buffer)) >= 0) { total += count; if (total > 5_000_000) throw new IllegalArgumentException("Backup zu groß"); output.write(buffer, 0, count); }
+                    String json = output.toString(StandardCharsets.UTF_8.name());
+                    JSONObject backup = new JSONObject(json);
+                    if (!"mach-backup".equals(backup.optString("format")) || backup.optJSONObject("state") == null) throw new IllegalArgumentException("Ungültiges Format");
+                    String script = "window.dispatchEvent(new CustomEvent('mach-backup-import',{detail:JSON.parse(" + JSONObject.quote(json) + ")}));";
+                    webView.evaluateJavascript(script, null);
+                } catch (Exception error) { Toast.makeText(this, "Diese Datei ist kein gültiges MACH-Backup.", Toast.LENGTH_LONG).show(); }
+            }
+            return;
+        }
         if (requestCode == QR_VERIFY_REQUEST) {
             if (resultCode == RESULT_OK) {
                 WakeKeyStore.verifyQr(this);

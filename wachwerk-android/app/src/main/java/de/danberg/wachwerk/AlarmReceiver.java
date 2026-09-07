@@ -23,5 +23,6 @@ public class AlarmReceiver extends BroadcastReceiver {
         lock.acquire(15000L);
         try { context.startActivity(AlarmRingingService.screenIntent(context)); } catch (RuntimeException ignored) { /* Notification opens the same ringing session. */ }
         if (intent.getAction()==null || !intent.getAction().contains(".SNOOZE.")) AlarmScheduler.rescheduleRecurring(context,intent);
+        BedtimeReceiver.rescheduleAlarmPlans(context);
     }
 }

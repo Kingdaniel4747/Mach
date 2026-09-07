@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { changeHabitResult, calendarState, clampDial, angleDelta, scopeFlag, deterministicIndex, streakFromDates, rewardProgress } from '../src/workflow.ts';
+import { changeHabitResult, calendarState, clampDial, angleDelta, scopeFlag, deterministicIndex, streakFromDates, rewardProgress, bedtimeReminderTimestamp } from '../src/workflow.ts';
 
 test('Habit: offen → geschafft → nicht geschafft → offen; Verlauf bleibt erhalten', () => {
   const old = { completedDates:['2026-08-31'], missedDates:[], text:'Sport' };
@@ -52,4 +52,10 @@ test('Quest-Serie zählt nur lückenlose Tage bis heute', () => {
 test('XP-Meilensteine vergeben gedeckelte Belohnungsminuten', () => {
   assert.deepEqual(rewardProgress(90, 20, 100, 5, 0, 30), { xp:110, earnedMinutes:5, availableMinutes:5 });
   assert.deepEqual(rewardProgress(190, 220, 100, 10, 25, 30), { xp:410, earnedMinutes:30, availableMinutes:30 });
+});
+test('Schlafenszeit eines frühen Weckers liegt korrekt am Vorabend', () => {
+  const result = bedtimeReminderTimestamp('2026-09-08', '06:50', '22:35');
+  assert.equal(new Date(result.reminderAt).getDate(), 7);
+  assert.equal(new Date(result.reminderAt).getHours(), 22);
+  assert.equal(new Date(result.wakeAt).getDate(), 8);
 });

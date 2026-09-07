@@ -12,29 +12,35 @@ import android.graphics.Color;
 import android.os.PowerManager;
 
 import java.util.Calendar;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 public class BedtimeReceiver extends BroadcastReceiver {
     private static final String PREFS = "wachwerk_bedtime";
     private static final String ACTION_START = "de.danberg.wachwerk.BEDTIME_START";
     private static final String ACTION_REPEAT = "de.danberg.wachwerk.BEDTIME_REPEAT";
+    private static final String ACTION_ALARM_START = "de.danberg.wachwerk.BEDTIME_ALARM_START";
     private static final int REQUEST_START = 27001;
     private static final int REQUEST_REPEAT = 27002;
+    private static final int REQUEST_ALARM_START = 27003;
 
     @Override
     public void onReceive(Context context, Intent intent) {
         SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        if (!prefs.getBoolean("enabled", false)) return;
+        boolean alarmStart = ACTION_ALARM_START.equals(intent.getAction());
+        if (!prefs.getBoolean("enabled", false) && !prefs.getBoolean("sessionActive", false) && !alarmStart) return;
         MainActivity.createNotificationChannels(context);
 
-        if (ACTION_START.equals(intent.getAction())) {
+        if (ACTION_START.equals(intent.getAction()) || alarmStart) {
             long now = System.currentTimeMillis();
             boolean screenOn = isScreenOn(context);
             long nextReminderAt = now + nextCadenceMinutes(prefs, 0) * 60_000L;
-            prefs.edit().putLong("started", now).putInt("count", 0)
+            prefs.edit().putLong("started", now).putBoolean("sessionActive", true).putInt("count", 0)
+                .putLong("activeWakeAt", alarmStart ? intent.getLongExtra("wakeAt", 0L) : 0L)
                 .putLong("screenOffSince", screenOn ? 0L : now)
                 .putLong("nextReminderAt", nextReminderAt).apply();
             if (screenOn) postReminder(context, 0); else cancelVisibleReminders(context);
-            scheduleDailyStart(context, prefs);
+            if (!alarmStart && prefs.getBoolean("enabled", false)) scheduleDailyStart(context, prefs);
             scheduleNextCheck(context, prefs);
             return;
         }
@@ -84,15 +90,38 @@ public class BedtimeReceiver extends BroadcastReceiver {
         prefs.edit().putString("signature", signature).putString("time", time)
             .putInt("interval", interval).putInt("minimumInterval", minimumInterval).putInt("sleepDetectMinutes", sleepDetectMinutes)
             .putString("mode", mode).putString("message", message).putBoolean("enabled", enabled)
-            .putLong("started", 0L).putLong("screenOffSince", 0L).putLong("nextReminderAt", 0L).putInt("count", 0).apply();
+            .putLong("started", 0L).putBoolean("sessionActive", false).putLong("screenOffSince", 0L).putLong("nextReminderAt", 0L).putInt("count", 0).apply();
         cancel(context);
         if (enabled) scheduleDailyStart(context, prefs);
     }
 
+    public static void syncAlarmPlans(Context context, String alarmsJson) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        prefs.edit().putString("alarmPlans", alarmsJson == null ? "[]" : alarmsJson).apply();
+        scheduleNextAlarmStart(context, prefs);
+    }
+
+    public static void rescheduleAlarmPlans(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        scheduleNextAlarmStart(context, prefs);
+    }
+
+    public static void startNow(Context context, String alarmId) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        if (prefs.getBoolean("sessionActive", false) && (alarmId == null ? "" : alarmId).equals(prefs.getString("activeAlarmId", ""))) return;
+        long now = System.currentTimeMillis();
+        prefs.edit().putString("activeAlarmId", alarmId == null ? "" : alarmId).putLong("started", now)
+            .putBoolean("sessionActive", true).putInt("count", 0).putLong("screenOffSince", isScreenOn(context) ? 0L : now)
+            .putLong("nextReminderAt", now + nextCadenceMinutes(prefs, 0) * 60_000L).apply();
+        MainActivity.createNotificationChannels(context);
+        if (isScreenOn(context)) postReminder(context, 0);
+        scheduleNextCheck(context, prefs);
+    }
+
     public static void restorePlan(Context context) {
         SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        if (!prefs.getBoolean("enabled", false)) return;
-        scheduleDailyStart(context, prefs);
+        if (prefs.getBoolean("enabled", false)) scheduleDailyStart(context, prefs);
+        scheduleNextAlarmStart(context, prefs);
         long started = prefs.getLong("started", 0L);
         if (started > 0L && System.currentTimeMillis() - started < 16L * 60L * 60L * 1000L) {
             scheduleNextCheck(context, prefs);
@@ -136,7 +165,9 @@ public class BedtimeReceiver extends BroadcastReceiver {
 
     public static void stopSession(Context context) {
         SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        prefs.edit().putLong("started", 0L).putLong("screenOffSince", 0L).putLong("nextReminderAt", 0L).putInt("count", 0).apply();
+        long activeWakeAt = prefs.getLong("activeWakeAt", 0L);
+        prefs.edit().putLong("started", 0L).putBoolean("sessionActive", false).putLong("screenOffSince", 0L).putLong("nextReminderAt", 0L).putInt("count", 0)
+            .putLong("activeWakeAt", 0L).putLong("suppressedWakeAt", activeWakeAt).apply();
         cancelRepeat(context);
         cancelVisibleReminders(context);
     }
@@ -161,6 +192,40 @@ public class BedtimeReceiver extends BroadcastReceiver {
                 new Intent(context, BedtimeReceiver.class).setAction(action),
                 PendingIntent.FLAG_NO_CREATE | PendingIntent.FLAG_IMMUTABLE);
             if (pending != null) manager.cancel(pending);
+        }
+    }
+
+    private static void scheduleNextAlarmStart(Context context, SharedPreferences prefs) {
+        long now = System.currentTimeMillis(), earliest = Long.MAX_VALUE, earliestWake = 0L;
+        long suppressedWake = prefs.getLong("suppressedWakeAt", 0L);
+        try {
+            JSONArray alarms = new JSONArray(prefs.getString("alarmPlans", "[]"));
+            for (int i = 0; i < alarms.length(); i++) {
+                JSONObject alarm = alarms.optJSONObject(i);
+                if (alarm == null || !alarm.optBoolean("enabled", false) || !alarm.optBoolean("bedtimeReminderEnabled", false) || alarm.optBoolean("bedtimeReminderImmediate", false)) continue;
+                String sleep = alarm.optString("plannedSleep", "");
+                if (!sleep.matches("(?:[01]\\d|2[0-3]):[0-5]\\d")) continue;
+                JSONArray days = alarm.optJSONArray("days");
+                long wake = AlarmScheduler.nextTrigger(alarm.optString("time", "07:00"), alarm.optString("date", ""), days == null ? "[]" : days.toString());
+                if (wake <= 0 || wake <= suppressedWake + 1_500L) continue;
+                int sleepMinutes = minutes(sleep), wakeMinutes = minutes(alarm.optString("time", "07:00"));
+                int duration = wakeMinutes - sleepMinutes;
+                if (duration <= 0) duration += 1_440;
+                long start = wake - duration * 60_000L;
+                if (start <= now + 1_500L && wake > now + 1_500L) start = now + 2_000L;
+                if (start > now + 1_500L && start < earliest) { earliest = start; earliestWake = wake; }
+            }
+        } catch (Exception ignored) {}
+        AlarmManager manager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+        PendingIntent existing = PendingIntent.getBroadcast(context, REQUEST_ALARM_START,
+            new Intent(context, BedtimeReceiver.class).setAction(ACTION_ALARM_START), PendingIntent.FLAG_NO_CREATE | PendingIntent.FLAG_IMMUTABLE);
+        if (existing != null) manager.cancel(existing);
+        if (prefs.getBoolean("sessionActive", false)) return;
+        if (earliest != Long.MAX_VALUE) {
+            Intent intent = new Intent(context, BedtimeReceiver.class).setAction(ACTION_ALARM_START).putExtra("wakeAt", earliestWake);
+            PendingIntent pending = PendingIntent.getBroadcast(context, REQUEST_ALARM_START, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            try { manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, earliest, pending); }
+            catch (SecurityException denied) { manager.set(AlarmManager.RTC_WAKEUP, earliest, pending); }
         }
     }
 
@@ -209,5 +274,9 @@ public class BedtimeReceiver extends BroadcastReceiver {
     private static int parse(String[] parts, int index, int fallback) {
         try { return Integer.parseInt(parts[index]); }
         catch (Exception ignored) { return fallback; }
+    }
+    private static int minutes(String value) {
+        String[] parts = value.split(":");
+        return parse(parts, 0, 0) * 60 + parse(parts, 1, 0);
     }
 }

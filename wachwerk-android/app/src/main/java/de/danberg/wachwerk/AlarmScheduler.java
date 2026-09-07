@@ -24,6 +24,7 @@ public final class AlarmScheduler {
 
     public static void syncAlarms(Context context, String json) {
         if (json == null || json.isBlank()) json = "[]";
+        BedtimeReceiver.syncAlarmPlans(context, json);
         SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         if (json.equals(prefs.getString(KEY_ALARMS, ""))) return;
         cancelCodes(context, prefs.getStringSet(KEY_CODES, new HashSet<>()));
@@ -173,7 +174,7 @@ public final class AlarmScheduler {
         catch (SecurityException denied) { manager.set(AlarmManager.RTC_WAKEUP, at, pending); }
     }
 
-    private static long nextTrigger(String time, String date, String daysJson) {
+    static long nextTrigger(String time, String date, String daysJson) {
         String[] parts = time.split(":");
         int hour = parts.length > 0 ? safeInt(parts[0], 7) : 7;
         int minute = parts.length > 1 ? safeInt(parts[1], 0) : 0;

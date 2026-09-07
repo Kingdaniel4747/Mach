@@ -47,3 +47,10 @@ export function rewardProgress(previousXp: number, earnedXp: number, interval: n
     availableMinutes: Math.min(Math.max(0, cap), Math.max(0, availableMinutes) + Math.max(0, milestones) * Math.max(0, rewardMinutes)),
   };
 }
+
+export function bedtimeReminderTimestamp(wakeDate: string, wakeTime: string, sleepTime: string) {
+  const wake = new Date(`${wakeDate}T${wakeTime}:00`);
+  const reminder = new Date(`${wakeDate}T${sleepTime}:00`);
+  if (sleepTime >= wakeTime) reminder.setDate(reminder.getDate() - 1);
+  return { reminderAt: reminder.getTime(), wakeAt: wake.getTime() };
+}

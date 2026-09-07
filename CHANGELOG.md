@@ -9,6 +9,10 @@
 - Einheitlicher Sperrbildschirm startet NFC oder QR sofort und behandelt Direkt-, Limit- und Uhrzeitregeln getrennt.
 - NFC-Wecker fordert bei einem gesperrten Gerät zuerst klar zum sicheren Entsperren auf; Snooze ist als großer hellblauer Knopf sichtbar.
 - Mittig ausgerichtete Ziehgriffe in den App-Dialogen.
+- Zyklus-Wecker besitzen nun einen eigenen Einschlafplan: gewählte Bettzeit bei „Aufstehen um“, sofortiger Start bei „Ich schlafe jetzt“.
+- Normale Wecker können ihre Einschlaf-Erinnerung einzeln aktivieren und zeitlich festlegen, ohne den täglichen Plan zu überschreiben.
+- Lokaler JSON-Export und -Import für Einstellungen, Wecker und Fortschritt; Sicherheitszugriffe und eigene Audiodateien werden bewusst nicht exportiert.
+- GitHub Actions vergibt bei jedem Lauf einen höheren Android-Versionscode und veröffentlicht erfolgreiche, signierte Standardbranch-Builds automatisch als Release.
 
 ## 1.13.0 · 2. September 2026
 

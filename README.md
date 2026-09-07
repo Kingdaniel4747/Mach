@@ -8,7 +8,7 @@
 
 MACH verbindet Wecker, Einschlaf-Erinnerungen, einen Standby-Modus, Fokus-Timer und einen App-Blocker mit To-dos und täglichen Habits. Das Ziel: aufstehen, anfangen und durchziehen – statt wieder zu verschieben.
 
-**Android 8.0+ · Offline · Kein Benutzerkonto · Version 1.14.0 · In Entwicklung**
+**Android 8.0+ · Offline · Kein Benutzerkonto · Version 1.15.0 · In Entwicklung**
 
 [Installation](docs/INSTALLATION.md) · [APK auf GitHub bauen](docs/GITHUB-ACTIONS.md) · [Selbst bauen](docs/ENTWICKLUNG.md) · [Änderungen](CHANGELOG.md) · [Datenschutz](docs/DATENSCHUTZ.md)
 
@@ -26,7 +26,7 @@ Abends fällt es schwer, das Handy wegzulegen. Morgens ist der Wecker schnell au
 | --- | --- |
 | **Wecker** | Einmalige und wiederkehrende Alarme, Bearbeiten und Löschen, eigene Alarmtöne, einstellbares Snooze und sanftes Bildschirmlicht. |
 | **Aufwachaufgaben** | Handy schütteln, Display gedrückt halten, einer Schlange folgen oder den eigenen QR-Code beziehungsweise NFC-Tag scannen. |
-| **Schnellplaner** | „Ich schlafe jetzt“ schlägt Weckzeiten vor. „Aufstehen um“ zeigt passende Bettzeiten. Zyklus- und Einschlafdauer sind einstellbar. |
+| **Schnellplaner** | „Ich schlafe jetzt“ schlägt Weckzeiten vor und startet nach dem Speichern sofort die Einschlaf-Erinnerung. „Aufstehen um“ koppelt die gewählte Bettzeit automatisch an den Zyklus-Wecker. |
 | **Abend-Erinnerungen** | Konfigurierbarer Beginn, gleichmäßige oder kürzer werdende Abstände und Berücksichtigung längerer Bildschirm-aus-Phasen. |
 | **Standby** | Querformat mit wählbaren Uhren, Kalender und weiteren Widgets. Lange drücken zum Anpassen, kurz tippen zum Verlassen. |
 | **App-Blocker** | Direkt-Sperre, Tageslimits und erlaubte Uhrzeiten. Die Bereiche haben getrennte Regeln und Freigaben per NFC, QR oder Passwort. |
@@ -35,6 +35,7 @@ Abends fällt es schwer, das Handy wegzulegen. Morgens ist der Wecker schnell au
 | **To-dos & Habits** | Aufgaben, Erinnerungen, tägliche Gewohnheiten und eine Monatsübersicht der Erfolge. |
 | **Tagesquests & Belohnungen** | Jeden Tag eine lokal gewählte Überraschungsaufgabe, dazu XP, Level, Serie und gedeckelte Bonusminuten. |
 | **Coach & Design** | Auswertung eigener Morgenchecks, verschiedene Farbpaletten, Schriften sowie Hoch- und Querformat. |
+| **Lokales Backup** | Einstellungen und Fortschritt als JSON-Datei sichern und nach einer Neuinstallation wieder einspielen. |
 
 Der Coach arbeitet mit deinen Einträgen und einstellbaren Annahmen. Er misst keine echten Schlafphasen und bestimmt keinen medizinisch validierten „perfekten“ Schlafbedarf.
 
@@ -46,7 +47,7 @@ Die installierbare Datei findest du im GitHub-Bereich **Releases** unter **Asset
 
 APK auf das Android-Handy laden, öffnen und die Installation für die verwendete Quelle erlauben. Bei einer vorhandenen MACH-Version als **Update** installieren – nicht vorher deinstallieren. Die ausführliche Anleitung erklärt auch die benötigten Android-Zugriffe: [Installation und erster Test](docs/INSTALLATION.md).
 
-> **Entwicklungsstand:** 25 Android-Unit-Tests aus Version 1.13.0 sowie 8 Web-Logiktests. NFC, Alarmton im Hintergrund und herstellerspezifisches Energiesparen müssen auf dem Zielgerät geprüft werden. Vor wichtigen Terminen zunächst einen Ersatzwecker verwenden.
+> **Entwicklungsstand:** 25 Android-Unit-Tests aus Version 1.13.0 sowie 9 Web-Logiktests. NFC, Alarmton im Hintergrund und herstellerspezifisches Energiesparen müssen auf dem Zielgerät geprüft werden. Vor wichtigen Terminen zunächst einen Ersatzwecker verwenden.
 
 ## Lokal – auch ohne Server
 
@@ -61,7 +62,7 @@ Androids systemeigene Sicherung kann unabhängig davon aktiv sein. Details zu Sp
 
 ## Quellcode & Entwicklung
 
-**Ohne Android Studio:** Der Workflow **Android APK bauen** erstellt nach Code-Änderungen auf `main`/`master` und für Pull Requests eine Test-APK. Unter **Actions → Android APK bauen → Run workflow** lässt sich der Build auch manuell starten. Eine signierte Release-APK ist nach Einrichtung deiner privaten GitHub-Secrets möglich. Anleitung und Unterschiede zwischen Test-APK und kompatiblem Update: [APK auf GitHub bauen lassen](docs/GITHUB-ACTIONS.md).
+**Ohne Android Studio:** Der Workflow **MACH APK bauen** erstellt für Pull Requests eine Test-APK. Nach Änderungen auf `main`/`master` baut er mit deinen privaten GitHub-Secrets automatisch eine signierte, höher versionierte APK und veröffentlicht sie in einem neuen GitHub-Release. Unter **Actions → MACH APK bauen → Run workflow** lässt sich der Build auch manuell starten. Anleitung und Unterschiede zwischen Test-APK und kompatiblem Update: [APK auf GitHub bauen lassen](docs/GITHUB-ACTIONS.md).
 
 ```text
 wachwerk-android/      Android-App, native Dienste und Tests

@@ -1,6 +1,6 @@
 name: MACH APK bauen
 
-run-name: APK · ${{ inputs.build_type || 'debug' }} · ${{ github.ref_name }}
+run-name: APK + Release · ${{ inputs.build_type || (github.event_name == 'pull_request' && 'debug' || 'release') }} · ${{ github.ref_name }}
 
 on:
   push:
@@ -20,17 +20,16 @@ on:
         description: 'debug = Test-APK; release = APK mit deinem privaten Signaturschlüssel'
         type: choice
         required: true
-        default: debug
+        default: release
         options:
           - debug
           - release
 
-# Kein Push, kein automatischer Release und keine Schreibrechte auf den Quellcode.
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: apk-${{ github.event_name }}-${{ github.ref }}-${{ inputs.build_type || 'debug' }}
+  group: apk-${{ github.event_name }}-${{ github.ref }}-${{ inputs.build_type || (github.event_name == 'pull_request' && 'debug' || 'release') }}
   cancel-in-progress: true
 
 jobs:
@@ -42,10 +41,10 @@ jobs:
       run:
         shell: bash
     env:
-      BUILD_TYPE: ${{ inputs.build_type || 'debug' }}
+      BUILD_TYPE: ${{ inputs.build_type || (github.event_name == 'pull_request' && 'debug' || 'release') }}
 
     steps:
-      - name: Release nur manuell vom Standardbranch zulassen
+      - name: Release nur vom Standardbranch zulassen
         env:
           EVENT_NAME: ${{ github.event_name }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
@@ -53,8 +52,8 @@ jobs:
           case "$BUILD_TYPE" in
             debug) ;;
             release)
-              if [[ "$EVENT_NAME" != "workflow_dispatch" || "$GITHUB_REF" != "refs/heads/$DEFAULT_BRANCH" ]]; then
-                echo "::error::Release bitte manuell vom Standardbranch starten."
+              if [[ "$EVENT_NAME" != "push" && "$EVENT_NAME" != "workflow_dispatch" ]] || [[ "$GITHUB_REF" != "refs/heads/$DEFAULT_BRANCH" ]]; then
+                echo "::error::Release-Builds sind nur bei Pushes oder manuell auf dem Standardbranch erlaubt."
                 exit 1
               fi
               ;;
@@ -66,6 +65,18 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Eindeutige Update-Version berechnen
+        run: |
+          base_version="$(sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' wachwerk-local-web/package.json | head -n 1)"
+          test -n "$base_version"
+          version_code=$((100000 + GITHUB_RUN_NUMBER * 10 + GITHUB_RUN_ATTEMPT))
+          version_name="${base_version}.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          {
+            echo "MACH_VERSION_CODE=$version_code"
+            echo "MACH_VERSION_NAME=$version_name"
+            echo "MACH_VERSION_TAG=v$version_name"
+          } >> "$GITHUB_ENV"
 
       - name: Node.js 24 einrichten
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -158,19 +169,32 @@ jobs:
           test -s "$apk"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk"
           mkdir -p apk-download
-          cp "$apk" "apk-download/MACH-$BUILD_TYPE.apk"
+          cp "$apk" "apk-download/MACH-$MACH_VERSION_NAME-$BUILD_TYPE.apk"
           (
             cd apk-download
-            sha256sum "MACH-$BUILD_TYPE.apk" > SHA256SUMS.txt
-            printf 'Build: %s\nCommit: %s\nWorkflow-Lauf: %s, Versuch: %s\n' \
-              "$BUILD_TYPE" "$GITHUB_SHA" "$GITHUB_RUN_NUMBER" "$GITHUB_RUN_ATTEMPT" > BUILD-INFO.txt
+            sha256sum "MACH-$MACH_VERSION_NAME-$BUILD_TYPE.apk" > SHA256SUMS.txt
+            printf 'Version: %s\nVersionscode: %s\nBuild: %s\nCommit: %s\nWorkflow-Lauf: %s, Versuch: %s\n' \
+              "$MACH_VERSION_NAME" "$MACH_VERSION_CODE" "$BUILD_TYPE" "$GITHUB_SHA" "$GITHUB_RUN_NUMBER" "$GITHUB_RUN_ATTEMPT" > BUILD-INFO.txt
           )
+
+      - name: Neues GitHub-Release veröffentlichen
+        if: env.BUILD_TYPE == 'release' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$MACH_VERSION_TAG" \
+            "apk-download/MACH-$MACH_VERSION_NAME-release.apk#MACH $MACH_VERSION_NAME – signierte Update-APK" \
+            "apk-download/SHA256SUMS.txt#SHA-256-Prüfsumme" \
+            "apk-download/BUILD-INFO.txt#Build-Informationen" \
+            --target "$GITHUB_SHA" \
+            --title "MACH $MACH_VERSION_NAME" \
+            --notes "Automatisch geprüfte und mit dem dauerhaft hinterlegten MACH-Schlüssel signierte Offline-APK. Android-Versionscode: $MACH_VERSION_CODE. Commit: $GITHUB_SHA."
 
       - name: APK zum Herunterladen bereitstellen
         id: apk
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: MACH-${{ env.BUILD_TYPE }}-${{ github.run_number }}-${{ github.run_attempt }}
+          name: MACH-${{ env.MACH_VERSION_NAME }}-${{ env.BUILD_TYPE }}
           path: apk-download/
           if-no-files-found: error
           retention-days: 30
@@ -188,7 +212,11 @@ jobs:
             else
               printf '**Release-APK:** Mit dem hinterlegten Schlüssel signiert. Für Updates müssen Signaturschlüssel und Paketname passen; den Versionscode bei neuen Versionen erhöhen.\n'
             fi
-            printf '\nEs wurde kein GitHub-Release veröffentlicht und kein Quellcode zurückgeschrieben.\n'
+            if [[ "$BUILD_TYPE" == "release" ]]; then
+              printf '\nDas GitHub-Release **%s** wurde automatisch veröffentlicht.\n' "$MACH_VERSION_TAG"
+            else
+              printf '\nPull-Request-Builds bleiben reine Test-Artefakte.\n'
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Test- und Lint-Berichte aufbewahren

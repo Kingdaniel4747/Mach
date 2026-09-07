@@ -624,6 +624,14 @@ button:disabled { cursor: default; opacity: .55; }
 .ringing-banner strong, .ringing-banner small { display: block; }
 .ringing-banner strong { font-size: 18px; }
 .ringing-banner small { margin-top: 5px; font-size: 14px; }
+.alarm-bedtime-plan { margin: 22px 0; padding: 18px; border: 1px solid rgba(155,245,177,.22); border-radius: 20px; background: rgba(155,245,177,.055); }
+.alarm-bedtime-plan .switch-row { margin: 0 0 14px; }
+.alarm-bedtime-plan .field-label { display: block; margin: 16px 0 9px; }
+.bedtime-now { display: flex; flex-direction: column; gap: 5px; padding: 15px; border-radius: 15px; background: rgba(201,220,248,.08); }
+.bedtime-now strong { color: var(--mint); }
+.bedtime-now span { color: var(--muted); font-size: 12px; line-height: 1.45; }
+.backup-card .dual-actions { align-items: stretch; }
+.backup-card .dual-actions > button { flex: 1; margin: 0; }
 
 /* Daily quests: progress without a mascot, accounts or online services. */
 .daily-quest { margin: 0 0 20px; padding: 22px; border: 1px solid rgba(201,220,248,.18); border-radius: 26px; background: linear-gradient(145deg,rgba(22,52,72,.98),rgba(8,25,38,.98)); box-shadow: 0 14px 34px rgba(0,0,0,.18); }
