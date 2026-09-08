@@ -407,6 +407,19 @@ button:disabled { cursor: default; }
 .focus-app-picker > div > button.selected { border-color: #4c8a61; background: #102d27; }
 .focus-app-picker > div .app-letter { width: 32px; height: 32px; border-radius: 9px; }
 .focus-app-picker > div i { color: var(--mint); font-style: normal; }
+.quest-app-picker { margin-top: 9px; border: 1px solid #38536a; border-radius: 17px; background: #081927; }
+.quest-app-picker summary { min-height: 58px; display: flex; align-items: center; justify-content: space-between; padding: 10px 13px; cursor: pointer; list-style: none; }
+.quest-app-picker summary strong, .quest-app-picker summary small { display: block; }
+.quest-app-picker summary strong { font-size: 12px; }
+.quest-app-picker summary small { margin-top: 3px; color: var(--muted); font-size: 10px; }
+.quest-app-picker summary b { color: var(--mint); font-size: 18px; transition: transform .2s ease; }
+.quest-app-picker[open] summary b { transform: rotate(180deg); }
+.quest-app-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 9px 8px; }
+.quest-app-actions button { min-height: 38px; border: 1px solid #38536a; border-radius: 11px; background: #0d2434; color: var(--ice); font-size: 11px; font-weight: 700; }
+.quest-app-list { max-height: 280px; overflow-y: auto; display: grid; gap: 6px; padding: 0 9px 9px; }
+.quest-app-list > button { min-height: 48px; display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 9px; padding: 6px 8px; border: 1px solid #2e4b60; border-radius: 13px; background: #0d2434; color: var(--ice); text-align: left; }
+.quest-app-list > button.selected { border-color: #4c8a61; background: #102d27; }
+.quest-app-list > button > i { color: var(--mint); font-style: normal; }
 .focus-start { margin-top: 13px; }
 @keyframes focus-pulse { to { opacity: .35; transform: scale(.7); } }
 .toast { position: absolute; z-index: 80; left: 50%; bottom: calc(88px + env(safe-area-inset-bottom)); max-width: calc(100% - 36px); transform: translateX(-50%); padding: 12px 16px; border: 1px solid #426078; border-radius: 24px; background: #142c3f; box-shadow: 0 12px 35px rgba(0,0,0,.35); color: var(--ice); font-size: 12px; font-weight: 750; white-space: normal; overflow-wrap: anywhere; text-align: center; animation: toast-in .25s ease-out; }
