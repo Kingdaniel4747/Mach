@@ -643,6 +643,13 @@ button:disabled { cursor: default; opacity: .55; }
 .quest-running strong { color: var(--mint); font-size: 29px; font-variant-numeric: tabular-nums; }
 .quest-running span { color: var(--ice); font-size: 12px; line-height: 1.45; }
 .daily-quest.compact { margin-top: 20px; }
+.home-quest-preview { margin: 20px 0; }
+.home-quest-card { width: 100%; min-height: 88px; display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 13px; padding: 16px; border: 1px solid rgba(201,220,248,.2); border-radius: 22px; background: linear-gradient(145deg,rgba(22,52,72,.9),rgba(8,25,38,.96)); color: var(--ice); text-align: left; }
+.home-quest-card.active { border-color: rgba(155,245,177,.5); }
+.home-quest-icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 14px; background: rgba(155,245,177,.14); color: var(--mint); font-size: 22px; }
+.home-quest-card h3 { margin: 4px 0; color: var(--ice); font-size: 16px; line-height: 1.25; }
+.home-quest-card small { color: var(--muted); font-size: 12px; line-height: 1.4; }
+.home-quest-card > i { color: var(--mint); font-size: 20px; font-style: normal; }
 
 /* The visible grabber remains centered even though its larger touch target spans the sheet. */
 .modal-sheet > .modal-handle { width: auto; display: grid; place-items: center; margin-left: -12px; margin-right: -12px; }

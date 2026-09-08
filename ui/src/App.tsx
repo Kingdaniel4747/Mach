@@ -195,7 +195,7 @@ const questPortfolio = (questFile.quests as DailyQuest[]).filter(quest =>
 const navItems: { id: Screen; icon: string; label: string }[] = [
   { id: "home", icon: "⌂", label: "Start" },
   { id: "alarms", icon: "◴", label: "Wecker" },
-  { id: "quests", icon: "＋", label: "Hinzufügen" },
+  { id: "quests", icon: "◈", label: "Quest" },
   { id: "todos", icon: "✓", label: "To-dos" },
   { id: "blocker", icon: "◈", label: "Blocker" },
 ];
@@ -865,10 +865,10 @@ export default function App() {
   }
 
   function renderQuests() {
-    if (!questPortfolio.length) return <><ScreenHeader eyebrow="HINZUFÜGEN" title="Tagesquests" /><div className="empty-state"><span>＋</span><h3>Noch keine Quests</h3><p>Füge in ui/src/quests.json eine Quest hinzu und starte den nächsten Build.</p></div></>;
+    if (!questPortfolio.length) return <><ScreenHeader eyebrow="QUEST" title="Tagesquests" /><div className="empty-state"><span>◈</span><h3>Noch keine Quests</h3><p>Füge in ui/src/quests.json eine Quest hinzu und starte den nächsten Build.</p></div></>;
     const active = questProgress.active?.date === todayKey ? questProgress.active : undefined;
     const remaining = active ? Math.max(0, active.endsAt - now.getTime()) : 0;
-    return <><ScreenHeader eyebrow="HINZUFÜGEN" title="Tagesquest" />
+    return <><ScreenHeader eyebrow="QUEST" title="Tagesquest" />
       {!questProgress.enabled ? <section className="settings-card"><h3>Tagesquests sind ausgeschaltet</h3><p>Aktiviere sie in den Einstellungen, um täglich eine Quest zu erhalten.</p></section> : <section className={`daily-quest ${questDoneToday ? "complete" : ""}`}>
         <div className="quest-top"><div><span className="overline">TAGESQUEST · {dailyQuest.category.toUpperCase()}</span><h3>{questDoneToday ? "Heute durchgezogen" : dailyQuest.title}</h3></div><span className="quest-xp">+{dailyQuest.xp} XP</span></div>
         <p>{questDoneToday ? "Die nächste Quest erscheint morgen." : dailyQuest.detail}</p>
@@ -881,6 +881,8 @@ export default function App() {
 
   function renderHome() {
     const next = upcoming[0];
+    const activeQuest = questProgress.active?.date === todayKey ? questProgress.active : undefined;
+    const questRemaining = activeQuest ? Math.max(0, activeQuest.endsAt - now.getTime()) : 0;
     return <>
       <header className="app-header"><div><span className="overline">{now.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" }).toUpperCase()}</span><h2>Guten Morgen{settings.name.trim() ? `, ${settings.name.trim()}` : ""}.</h2></div><button type="button" className="settings-button" aria-label="Einstellungen" onClick={() => { resetSheet(); setScreen("settings"); }}>⚙</button></header>
       {!settings.keySetupDismissed && !settings.alarmNfcToken && <section className="settings-card key-setup"><span className="overline">EINMAL EINRICHTEN</span><h3>Dein NFC-Schlüssel</h3><p>Lerne deinen Tag einmal an. Für neue Wecker bleibt er danach gespeichert.</p><button type="button" className="primary-button" onClick={() => enrollNfc("alarm")}>NFC-Tag anlernen</button><button type="button" className="secondary-button" onClick={() => setSettings(current => ({ ...current, keySetupDismissed: true }))}>Später</button></section>}
@@ -888,6 +890,7 @@ export default function App() {
         {upcoming.length ? <><div className="alarm-carousel" onScroll={event => setAlarmSlide(Math.round(event.currentTarget.scrollLeft / event.currentTarget.clientWidth))}>{upcoming.map(({ alarm, date }) => <article className="hero-card" key={alarm.id} onClick={() => setAlarmDraft({ ...alarm })}><div className="moon-orbit"><span>☾</span></div><div><span className="overline">NÄCHSTER WECKER</span><div className="alarm-time">{alarm.time}</div><p>{date?.toLocaleDateString("de-DE", { weekday: "long" })} · {challengeNames[alarm.challenge]}</p></div><Toggle on={alarm.enabled} label="Wecker umschalten" onClick={() => setAlarms(current => current.map(item => item.id === alarm.id ? { ...item, enabled: !item.enabled } : item))} /></article>)}</div><div className="carousel-dots">{upcoming.map((_, index) => <i key={index} className={alarmSlide === index ? "active" : ""} />)}</div></> : <article className="hero-card empty-hero"><div className="moon-orbit"><span>☾</span></div><div><span className="overline">NÄCHSTER WECKER</span><h3>Noch keiner gestellt</h3><p>Erstelle deinen ersten Wecker im Wecker-Tab.</p></div><button type="button" className="small-primary" onClick={() => { setScreen("alarms"); openNewAlarm(); }}>＋</button></article>}
       </section>
       <div className="quick-row home-quick-row"><button type="button" className="wide-quick" onClick={enterStandby}><span>◐</span><div><strong>Standby-Modus</strong><small>Uhr, Kalender und Widgets im Querformat</small></div></button></div>
+      <section className="home-quest-preview"><button type="button" className={`home-quest-card ${activeQuest ? "active" : ""}`} onClick={() => setScreen("quests")}><span className="home-quest-icon">◈</span><div><span className="overline">HEUTIGE QUEST</span><h3>{!questProgress.enabled ? "Tagesquests sind pausiert" : !questPortfolio.length ? "Noch keine Quest angelegt" : questDoneToday ? "Heute durchgezogen" : dailyQuest.title}</h3><small>{activeQuest ? `${formatCountdown(questRemaining)} · Apps bleiben gesperrt` : questDoneToday ? "Die nächste Quest erscheint morgen." : dailyQuest ? `${dailyQuest.durationMinutes} Minuten · +${dailyQuest.xp} XP` : "Öffnen und Quest hinzufügen"}</small></div><i>→</i></button></section>
       <section className="home-todo-preview"><div className="home-todo-title"><div><span className="overline">HEUTE</span><h3>Deine To-dos</h3></div><button type="button" onClick={() => setScreen("todos")}>Alle ansehen →</button></div>{todos.filter(todo => !todo.done).slice(0, 3).length ? todos.filter(todo => !todo.done).slice(0, 3).map(todo => <button type="button" key={todo.id} className="home-todo-row" onClick={() => toggleTodo(todo.id)}><i /> <span>{todo.text}</span></button>) : <button type="button" className="home-todo-empty" onClick={() => { setScreen("todos"); setTodoTab("open"); }}>Alles erledigt · neue Aufgabe hinzufügen</button>}<div className="habit-summary"><span>{habits.filter(habit => !habit.completedDates.includes(localDate()) && !habit.missedDates.includes(localDate())).length}</span><small>Habits heute noch offen</small></div></section>
     </>;
   }
