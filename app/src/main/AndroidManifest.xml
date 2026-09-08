@@ -90,7 +90,6 @@
         <receiver android:name=".AlarmReceiver" android:exported="false" />
         <receiver android:name=".BedtimeReceiver" android:exported="false" />
         <receiver android:name=".GentleWakeReceiver" android:exported="false" />
-        <receiver android:name=".MorningCheckReceiver" android:exported="false" />
         <receiver android:name=".TodoReminderReceiver" android:exported="false" />
         <receiver android:name=".FocusTimerReceiver" android:exported="false" />
         <service

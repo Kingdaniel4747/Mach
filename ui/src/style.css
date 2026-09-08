@@ -180,8 +180,6 @@ button:disabled { cursor: default; }
 .week-bars i.late { background: var(--sun); }
 .week-bars i.miss { background: var(--danger); }
 .week-bars span { color: var(--muted); font-size: 9px; }
-.coach-empty { padding-top: 80px; }
-.coach-empty p { max-width: 330px; margin: 5px auto 0; font-size: 12px; line-height: 1.55; }
 .rhythm-card ol { display: grid; gap: 11px; margin: 17px 0 0; padding: 0; list-style: none; counter-reset: steps; }
 .rhythm-card li { display: grid; grid-template-columns: 92px 1fr; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line); }
 .rhythm-card li strong { color: var(--mint); font-size: 12px; }
@@ -505,11 +503,6 @@ button:disabled { cursor: default; }
   .screen-alarms .suggestion-list { grid-template-columns: 1fr; }
   .screen-alarms > .alarm-section-title { grid-column: 2; grid-row: 2; margin: 0; }
   .screen-alarms > .alarm-list { grid-column: 2; grid-row: 3; }
-  .screen-coach { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 15px; align-items: start; }
-  .screen-coach > .screen-header, .screen-coach > .coach-tabs { grid-column: 1 / -1; }
-  .screen-coach > .analysis-hero, .screen-coach > .rhythm-card { grid-column: 1; }
-  .screen-coach > .stats-grid, .screen-coach > .recommendation-card { grid-column: 2; grid-row: 3; margin-top: 0; }
-  .screen-coach > .week-card { grid-column: 1 / -1; }
   .screen-todos { display: grid; grid-template-columns: .7fr 1.3fr; gap: 10px 16px; align-items: start; }
   .screen-todos > .screen-header { grid-column: 1 / -1; }
   .screen-todos > .todo-list, .screen-todos > .habit-list { grid-column: 2; grid-row: 2 / 5; }
@@ -646,6 +639,9 @@ button:disabled { cursor: default; opacity: .55; }
 .quest-stats { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 15px; }
 .quest-stats span { padding: 8px 10px; border-radius: 12px; background: rgba(201,220,248,.08); color: var(--ice); font-size: 12px; }
 .quest-complete { width: 100%; min-height: 52px; margin-top: 16px; border: 0; border-radius: 16px; background: var(--mint); color: var(--ink); font-size: 15px; font-weight: 850; }
+.quest-running { display: grid; gap: 6px; margin-top: 16px; padding: 15px; border: 1px solid rgba(155,245,177,.36); border-radius: 16px; background: rgba(155,245,177,.08); }
+.quest-running strong { color: var(--mint); font-size: 29px; font-variant-numeric: tabular-nums; }
+.quest-running span { color: var(--ice); font-size: 12px; line-height: 1.45; }
 .daily-quest.compact { margin-top: 20px; }
 
 /* The visible grabber remains centered even though its larger touch target spans the sheet. */

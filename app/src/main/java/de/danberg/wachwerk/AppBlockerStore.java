@@ -24,6 +24,8 @@ public final class AppBlockerStore {
     private static final String LIMIT_REMINDER_MINUTES = "limit_reminder_minutes";
     private static final String PASSWORD_HASH = "password_hash";
     private static final String REWARD_MINUTES = "reward_minutes";
+    private static final String QUEST_UNTIL = "quest_until";
+    private static final String QUEST_PACKAGES = "quest_packages";
 
     private AppBlockerStore() {}
 
@@ -59,6 +61,16 @@ public final class AppBlockerStore {
                         new JSONObject().put("start", start).put("end", end));
                 }
             }
+            JSONArray incomingQuestPackages = data.optJSONArray("questPackages");
+            Set<String> cleanQuestPackages = new HashSet<>();
+            if (incomingQuestPackages != null) for (int i = 0; i < incomingQuestPackages.length(); i++) {
+                String packageName = incomingQuestPackages.optString(i, "");
+                if (!packageName.isEmpty() && !packageName.equals(context.getPackageName())) cleanQuestPackages.add(packageName);
+            }
+            long now = System.currentTimeMillis();
+            long requestedQuestUntil = data.optLong("questUntil", 0L);
+            long questUntil = requestedQuestUntil > now && requestedQuestUntil <= now + 1_440L * 60_000L && !cleanQuestPackages.isEmpty()
+                ? requestedQuestUntil : 0L;
             boolean limitsActive = scopeEnabled(context, "limits"), windowsActive = scopeEnabled(context, "windows");
             SharedPreferences.Editor editor = prefs(context).edit();
             JSONObject methods = data.optJSONObject("methods");
@@ -80,6 +92,7 @@ public final class AppBlockerStore {
                 .putBoolean(LIMIT_REMINDERS, data.optBoolean("limitReminderEnabled", false))
                 .putInt(LIMIT_REMINDER_MINUTES, Math.max(1, Math.min(1_440, data.optInt("limitReminderMinutes", 10))))
                 .putInt(REWARD_MINUTES, Math.max(0, Math.min(1_440, data.optInt("rewardMinutesAvailable", rewardMinutes(context)))))
+                .putLong(QUEST_UNTIL, questUntil).putStringSet(QUEST_PACKAGES, cleanQuestPackages)
                 .apply();
         } catch (Exception ignored) {}
     }
@@ -92,7 +105,7 @@ public final class AppBlockerStore {
         if ("windows".equals(scope)) return prefs(context).getBoolean("windowsEnabled", !windowsJson(context).equals("{}"));
         return isEnabled(context);
     }
-    public static boolean anyEnabled(Context context) { return isEnabled(context) || scopeEnabled(context,"limits") || scopeEnabled(context,"windows"); }
+    public static boolean anyEnabled(Context context) { return isEnabled(context) || isQuestActive(context) || scopeEnabled(context,"limits") || scopeEnabled(context,"windows"); }
     public static boolean toggleScope(Context context, String scope) {
         if (!"limits".equals(scope) && !"windows".equals(scope)) return toggle(context);
         boolean enabled = !scopeEnabled(context, scope);
@@ -109,6 +122,10 @@ public final class AppBlockerStore {
     public static String qrToken(Context context) { return prefs(context).getString(QR_TOKEN, "wachwerk-personal-code"); }
     public static Set<String> packages(Context context) { return new HashSet<>(prefs(context).getStringSet(PACKAGES, new HashSet<>())); }
     public static boolean isBlocked(Context context, String packageName) { return isEnabled(context) && packages(context).contains(packageName); }
+    public static long questUntil(Context context) { return prefs(context).getLong(QUEST_UNTIL, 0L); }
+    public static Set<String> questPackages(Context context) { return new HashSet<>(prefs(context).getStringSet(QUEST_PACKAGES, new HashSet<>())); }
+    public static boolean isQuestActive(Context context) { return questUntil(context) > System.currentTimeMillis() && !questPackages(context).isEmpty(); }
+    public static boolean isQuestBlocked(Context context, String packageName) { return isQuestActive(context) && questPackages(context).contains(packageName); }
     public static int dailyLimitMinutes(Context context, String packageName) {
         if (!scopeEnabled(context, "limits")) return 0;
         try { return new JSONObject(prefs(context).getString(LIMITS, "{}")).optInt(packageName, 0); }
@@ -164,6 +181,8 @@ public final class AppBlockerStore {
                 .put("limits", new JSONObject(limitsJson(context))).put("windows", new JSONObject(windowsJson(context)))
                 .put("limitReminderEnabled", limitRemindersEnabled(context)).put("limitReminderMinutes", limitReminderMinutes(context));
             state.put("rewardMinutesAvailable", rewardMinutes(context));
+            state.put("questUntil", questUntil(context));
+            state.put("questPackages", new JSONArray(questPackages(context)));
             JSONObject methods = new JSONObject(), passwords = new JSONObject();
             for (String scope : new String[]{"instant", "limits", "windows"}) {
                 methods.put(scope, method(context, scope));

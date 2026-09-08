@@ -14,6 +14,7 @@ public final class BlockPolicy {
     public static String reason(Context context, String packageName) {
         if (packageName == null || packageName.isEmpty()) return "";
         if (MorningBlockStore.isBlocked(context,packageName)) return "morning";
+        if (AppBlockerStore.isQuestBlocked(context, packageName)) return "quest";
         if (AppBlockerStore.isBlocked(context, packageName) && keyReady(context, "instant")) return "direct";
         if (FocusTimerScheduler.isPackageBlocked(context, packageName)) return "focus";
         if (AppBlockerStore.isOutsideAllowedWindow(context, packageName)

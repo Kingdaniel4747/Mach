@@ -5,18 +5,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSheetSwipe } from "./useSheetSwipe";
 import NumberField from "./NumberField";
 import { bedtimeReminderTimestamp, changeHabitResult, calendarState, deterministicIndex, rewardProgress, scopeFlag, streakFromDates } from "./workflow";
+import questFile from "./quests.json";
 
-type Screen = "home" | "alarms" | "coach" | "todos" | "blocker" | "settings" | "qr";
-type CoachTab = "analysis" | "rhythm";
+type Screen = "home" | "alarms" | "quests" | "todos" | "blocker" | "settings" | "qr";
 type Challenge = "shake" | "snake" | "hold" | "qr" | "nfc";
-type CheckinState = "great" | "late" | "miss";
-type StandbyWidget = "clock" | "alarm" | "calendar" | "rhythm" | "cycles" | "sleep" | "todos" | "focus";
+type StandbyWidget = "clock" | "alarm" | "calendar" | "sleep" | "todos" | "focus";
 type SheetKind = "alarm" | "todo" | "settings" | "choose";
 type Todo = { id: string; text: string; done: boolean; createdAt: number; completedAt?: number; reminderAt?: string };
 type Habit = { id: string; text: string; completedDates: string[]; missedDates: string[]; createdAt: number };
 type QuestDifficulty = "easy" | "medium" | "hard";
-type DailyQuest = { id: string; title: string; detail: string; category: string; difficulty: QuestDifficulty; xp: number };
-type QuestProgress = { enabled: boolean; difficulty: QuestDifficulty | "mixed"; completedDates: string[]; xp: number; rewardMinutesAvailable: number };
+type DailyQuest = { id: string; title: string; detail: string; category: string; difficulty: QuestDifficulty; durationMinutes: number; xp: number };
+type ActiveQuest = { id: string; date: string; startedAt: number; endsAt: number; packages: string[] };
+type QuestProgress = { enabled: boolean; difficulty: QuestDifficulty | "mixed"; completedDates: string[]; xp: number; rewardMinutesAvailable: number; active?: ActiveQuest };
 type Alarm = {
   id: string;
   time: string;
@@ -43,16 +43,6 @@ type Alarm = {
   bedtimeReminderEnabled: boolean;
   bedtimeReminderImmediate?: boolean;
 };
-type PendingWake = {
-  eventId: string;
-  alarmId: string;
-  label: string;
-  plannedTime: string;
-  firedAt: number;
-  snoozes: number;
-  plannedSleep?: string;
-};
-type Checkin = PendingWake & { state: CheckinState; checkedAt: number; plannedSleep: string; sleepMinutes: number };
 type Settings = {
   name: string;
   alarmNfcToken: string;
@@ -65,7 +55,6 @@ type Settings = {
   reminderMinimumInterval: number;
   sleepDetectMinutes: number;
   reminderMessage: string;
-  morningDelay: number;
   morningBlockEnabled: boolean;
   morningBlockMinutes: number;
   morningBlockPackages: string[];
@@ -91,6 +80,7 @@ type Settings = {
   focusPackages: string[];
   focusSilenceNotifications: boolean;
   consistencyMode: "habits" | "todos" | "both";
+  questPackages: string[];
   questRewardMinutes: number;
   questRewardCap: number;
 };
@@ -98,10 +88,10 @@ type AlarmDraft = Omit<Alarm, "id" | "createdAt" | "qrToken"> & { id?: string };
 type AppWindow = { start: string; end: string };
 type BlockerScope = "instant" | "limits" | "windows";
 type BlockerMethod = "nfc" | "qr" | "password";
-type BlockerState = { methods: Partial<Record<BlockerScope, BlockerMethod>>; hasPasswords: Partial<Record<BlockerScope, boolean>>; enabled: boolean; limitsEnabled: boolean; windowsEnabled: boolean; packages: string[]; nfcToken: string; method: "nfc" | "qr" | "password"; qrToken: string; limits: Record<string, number>; windows: Record<string, AppWindow>; hasPassword: boolean; limitReminderEnabled: boolean; limitReminderMinutes: number; rewardMinutesAvailable: number };
+type BlockerState = { methods: Partial<Record<BlockerScope, BlockerMethod>>; hasPasswords: Partial<Record<BlockerScope, boolean>>; enabled: boolean; limitsEnabled: boolean; windowsEnabled: boolean; packages: string[]; nfcToken: string; method: "nfc" | "qr" | "password"; qrToken: string; limits: Record<string, number>; windows: Record<string, AppWindow>; hasPassword: boolean; limitReminderEnabled: boolean; limitReminderMinutes: number; rewardMinutesAvailable: number; questUntil: number; questPackages: string[] };
 type InstalledApp = { packageName: string; label: string; icon?: string };
 type FocusState = { active: boolean; ringing: boolean; phase: "work" | "break"; workMinutes: number; breakMinutes: number; rounds: number; round: number; endAt: number; silenceNotifications?: boolean };
-type PermissionState = { liveSupported?: boolean; liveEnabled?: boolean; notifications: boolean; exact: boolean; fullScreen: boolean; camera: boolean; dnd: boolean };
+type PermissionState = { notifications: boolean; exact: boolean; fullScreen: boolean; camera: boolean; dnd: boolean };
 
 declare global {
   interface Window {
@@ -114,7 +104,6 @@ declare global {
       getNativeState?: () => string;
       openRingingAlarm?: () => void;
       getAlarmPermissionState?: () => string;
-      completeMorningCheck?: (eventId: string, state: string) => void;
       enterStandby?: () => void;
       exitStandby?: () => void;
       getQrMatrix?: (content: string) => string;
@@ -131,7 +120,6 @@ declare global {
       requestCameraPermission?: () => void;
       openExactAlarmSettings?: () => void;
       openFullScreenSettings?: () => void;
-      openLiveNotificationSettings?: () => void;
       openNotificationSettings?: () => void;
       openNotificationPolicySettings?: () => void;
       getInstalledApps?: () => string;
@@ -170,7 +158,6 @@ const initialSettings: Settings = {
   reminderMinimumInterval: 1,
   sleepDetectMinutes: 60,
   reminderMessage: "Zeit, das Handy wegzulegen und schlafen zu gehen.",
-  morningDelay: 60,
   morningBlockEnabled: false,
   morningBlockMinutes: 20,
   morningBlockPackages: [],
@@ -196,24 +183,19 @@ const initialSettings: Settings = {
   focusPackages: [],
   focusSilenceNotifications: false,
   consistencyMode: "habits",
+  questPackages: [],
   questRewardMinutes: 5,
   questRewardCap: 30,
 };
-const questPortfolio: DailyQuest[] = [
-  { id: "walk-10", title: "10 Minuten spazieren", detail: "Ohne Scrollen, nur du und ein kurzer Weg.", category: "Bewegung", difficulty: "easy", xp: 20 },
-  { id: "pushups", title: "10 Liegestütze", detail: "Am Stück oder in zwei kleinen Sätzen.", category: "Bewegung", difficulty: "easy", xp: 20 },
-  { id: "desk", title: "Schreibtisch zurücksetzen", detail: "Räume die Arbeitsfläche komplett frei.", category: "Ordnung", difficulty: "easy", xp: 20 },
-  { id: "laundry", title: "Eine Wäsche-Aufgabe erledigen", detail: "Waschen, aufhängen oder zusammenlegen zählt.", category: "Haushalt", difficulty: "medium", xp: 30 },
-  { id: "room-15", title: "15 Minuten Zimmer-Reset", detail: "Timer an und alles sichtbar Unordentliche angehen.", category: "Ordnung", difficulty: "medium", xp: 30 },
-  { id: "clean", title: "Komplett frisch machen", detail: "Duschen, rasieren oder Pflege – bewusst statt nebenbei.", category: "Selbstfürsorge", difficulty: "medium", xp: 30 },
-  { id: "outside-30", title: "30 Minuten rausgehen", detail: "Ein längerer Spaziergang ohne Social Media.", category: "Bewegung", difficulty: "hard", xp: 45 },
-  { id: "deep-work", title: "45 Minuten echte Fokuszeit", detail: "Eine wichtige Sache, Benachrichtigungen aus.", category: "Fokus", difficulty: "hard", xp: 45 },
-  { id: "call", title: "Melde dich bei jemandem", detail: "Eine echte Nachricht oder ein kurzer Anruf.", category: "Soziales", difficulty: "medium", xp: 30 },
-];
+const questPortfolio = (questFile.quests as DailyQuest[]).filter(quest =>
+  typeof quest.id === "string" && typeof quest.title === "string" && typeof quest.detail === "string"
+  && ["easy", "medium", "hard"].includes(quest.difficulty) && Number.isInteger(quest.durationMinutes)
+  && quest.durationMinutes >= 1 && quest.durationMinutes <= 1_440 && Number.isFinite(quest.xp) && quest.xp >= 0,
+);
 const navItems: { id: Screen; icon: string; label: string }[] = [
   { id: "home", icon: "⌂", label: "Start" },
   { id: "alarms", icon: "◴", label: "Wecker" },
-  { id: "coach", icon: "⌁", label: "Coach" },
+  { id: "quests", icon: "＋", label: "Hinzufügen" },
   { id: "todos", icon: "✓", label: "To-dos" },
   { id: "blocker", icon: "◈", label: "Blocker" },
 ];
@@ -229,8 +211,6 @@ const standbyWidgetNames: Record<StandbyWidget, string> = {
   clock: "Uhr",
   alarm: "Nächster Wecker",
   calendar: "Kalender",
-  rhythm: "Aufsteh-Erfolg",
-  cycles: "Schlafbedarf",
   sleep: "Schlafenszeit",
   todos: "Aufgaben",
   focus: "Fokus-Timer",
@@ -250,11 +230,6 @@ function formatMinutes(total: number) {
 function timeToMinutes(value: string) {
   const [hours, minutes] = value.split(":").map(Number);
   return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
-}
-function durationBetween(start: string, end: string) {
-  let minutes = timeToMinutes(end) - timeToMinutes(start);
-  if (minutes <= 0) minutes += 1440;
-  return minutes;
 }
 function formatDuration(minutes: number) {
   if (!minutes) return "–";
@@ -339,13 +314,10 @@ function TimePicker({ label, value, onChange }: { label: string; value: string; 
 }
 export default function App() {
   const [screen, setScreen] = useState<Screen>("home");
-  const [coachTab, setCoachTab] = useState<CoachTab>("analysis");
   const [alarms, setAlarms] = useState<Alarm[]>([]);
   const [todos, setTodos] = useState<Todo[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]);
   const [questProgress, setQuestProgress] = useState<QuestProgress>({ enabled: true, difficulty: "mixed", completedDates: [], xp: 0, rewardMinutesAvailable: 0 });
-  const [checkins, setCheckins] = useState<Checkin[]>([]);
-  const [pendingWake, setPendingWake] = useState<PendingWake | null>(null);
   const [settings, setSettings] = useState<Settings>(initialSettings);
   const [todoTab, setTodoTab] = useState<"open" | "done" | "habits">("open");
   const [todoModal, setTodoModal] = useState(false);
@@ -372,7 +344,7 @@ export default function App() {
   const [nativeCompleted, setNativeCompleted] = useState<string[]>([]);
   const [qrMatrix, setQrMatrix] = useState<{ size: number; bits: string } | null>(null);
   const [sheetClosing, setSheetClosing] = useState(false);
-  const [blocker, setBlocker] = useState<BlockerState>({ methods: {}, hasPasswords: {}, enabled: false, limitsEnabled: false, windowsEnabled: false, packages: [], nfcToken: "", method: "nfc", qrToken: "wachwerk-personal-code", limits: {}, windows: {}, hasPassword: false, limitReminderEnabled: false, limitReminderMinutes: 10, rewardMinutesAvailable: 0 });
+  const [blocker, setBlocker] = useState<BlockerState>({ methods: {}, hasPasswords: {}, enabled: false, limitsEnabled: false, windowsEnabled: false, packages: [], nfcToken: "", method: "nfc", qrToken: "wachwerk-personal-code", limits: {}, windows: {}, hasPassword: false, limitReminderEnabled: false, limitReminderMinutes: 10, rewardMinutesAvailable: 0, questUntil: 0, questPackages: [] });
   const [blockerPassword, setBlockerPassword] = useState("");
   const [focusState, setFocusState] = useState<FocusState>({ active: false, ringing: false, phase: "work", workMinutes: 45, breakMinutes: 5, rounds: 1, round: 1, endAt: 0 });
   const [permissions, setPermissions] = useState<PermissionState>({ notifications: true, exact: true, fullScreen: true, camera: true, dnd: false });
@@ -396,10 +368,9 @@ export default function App() {
   const applyNativeState = (raw?: string | null) => {
     if (!raw) return;
     try {
-      const state = JSON.parse(raw) as { pendingWake?: PendingWake | null; completedOneTimeIds?: string[]; openMorningCheck?: boolean; morningBlock?: {until: number; packages: string[]}; alarmRinging?: boolean };
+      const state = JSON.parse(raw) as { completedOneTimeIds?: string[]; morningBlock?: {until: number; packages: string[]}; alarmRinging?: boolean };
       if (state.morningBlock) setMorningBlock(state.morningBlock);
       setAlarmRinging(Boolean(state.alarmRinging));
-      if (state.pendingWake) { setPendingWake(state.pendingWake); if (state.openMorningCheck) setScreen("home"); }
       if (Array.isArray(state.completedOneTimeIds)) setNativeCompleted(state.completedOneTimeIds);
     } catch { /* A malformed platform state must never block the local UI. */ }
   };
@@ -407,12 +378,12 @@ export default function App() {
   useEffect(() => {
     // Static screens only need a fresh minute. Reserve one-second updates for
     // visible countdowns so the complete WebView UI is not reconciled constantly.
-    const needsSecondTicks = focusState.active || morningBlock.until > Date.now();
+    const needsSecondTicks = focusState.active || morningBlock.until > Date.now() || Boolean(questProgress.active && questProgress.active.endsAt > Date.now());
     const refresh = () => { if (!document.hidden) setNow(new Date()); };
     const timer = window.setInterval(refresh, needsSecondTicks ? 1_000 : 30_000);
     document.addEventListener("visibilitychange", refresh);
     return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", refresh); };
-  }, [focusState.active, morningBlock.until]);
+  }, [focusState.active, morningBlock.until, questProgress.active?.endsAt]);
   useEffect(() => {
     try {
       if (window.localStorage.getItem(SCHEMA_KEY) !== "3") {
@@ -422,7 +393,7 @@ export default function App() {
       const saved = window.localStorage.getItem(STORAGE_KEY) ?? window.localStorage.getItem(LEGACY_STORAGE_KEY);
       if (saved) {
         try {
-          const data = JSON.parse(saved) as Partial<{ alarms: Alarm[]; todos: Todo[]; habits: Habit[]; questProgress: QuestProgress; checkins: Checkin[]; settings: Settings; blocker: BlockerState; standby: { clock: "digital" | "analog"; font?: "apple" | "soft" | "mono"; tone: "blue" | "amber" | "mint" | "rose"; left: StandbyWidget; right: StandbyWidget } }>;
+          const data = JSON.parse(saved) as Partial<{ alarms: Alarm[]; todos: Todo[]; habits: Habit[]; questProgress: QuestProgress; settings: Settings; blocker: BlockerState; standby: { clock: "digital" | "analog"; font?: "apple" | "soft" | "mono"; tone: "blue" | "amber" | "mint" | "rose"; left: StandbyWidget; right: StandbyWidget } }>;
           const mergedSettings = { ...initialSettings, ...(data.settings ?? {}) };
           if (!mergedSettings.alarmNfcToken) mergedSettings.alarmNfcToken = data.alarms?.find(alarm => alarm.nfcToken)?.nfcToken || data.blocker?.nfcToken || "";
           setSettings(mergedSettings);
@@ -432,8 +403,8 @@ export default function App() {
             snoozeAggressive: alarm.snoozeAggressive ?? mergedSettings.snoozeAggressive,
             snoozeMinimumMinutes: alarm.snoozeMinimumMinutes ?? mergedSettings.snoozeMinimumMinutes,
             bedtimeReminderEnabled: alarm.bedtimeReminderEnabled ?? (alarm.source === "cycle") })));
-          setTodos((data.todos ?? []).map(todo => ({ ...todo, reminderAt: todo.reminderAt ?? "", completedAt: todo.completedAt ?? (todo.done ? todo.createdAt : undefined) }))); setHabits((data.habits ?? []).map(habit => ({ ...habit, completedDates: habit.completedDates ?? [], missedDates: habit.missedDates ?? [] }))); setQuestProgress(current => ({ ...current, ...(data.questProgress ?? {}) })); setCheckins(data.checkins ?? []);
-          if (data.blocker) setBlocker(current => ({ ...current, ...data.blocker, limits: data.blocker!.limits ?? {}, windows: data.blocker!.windows ?? {} }));
+          setTodos((data.todos ?? []).map(todo => ({ ...todo, reminderAt: todo.reminderAt ?? "", completedAt: todo.completedAt ?? (todo.done ? todo.createdAt : undefined) }))); setHabits((data.habits ?? []).map(habit => ({ ...habit, completedDates: habit.completedDates ?? [], missedDates: habit.missedDates ?? [] }))); setQuestProgress(current => ({ ...current, ...(data.questProgress ?? {}) }));
+          if (data.blocker) setBlocker(current => ({ ...current, ...data.blocker, limits: data.blocker!.limits ?? {}, windows: data.blocker!.windows ?? {}, questUntil: data.blocker!.questUntil ?? 0, questPackages: data.blocker!.questPackages ?? [] }));
           if (data.standby) {
             setStandbyClock(data.standby.clock); setStandbyTone(data.standby.tone);
             if (data.standby.font) setStandbyFont(data.standby.font);
@@ -560,11 +531,11 @@ export default function App() {
   useEffect(() => {
     if (!hydrated) return;
     const blockerWithRewards = { ...blocker, rewardMinutesAvailable: questProgress.rewardMinutesAvailable };
-    const persist = () => window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ alarms, todos, habits, questProgress, checkins, settings, blocker: blockerWithRewards, standby: { clock: standbyClock, font: standbyFont, tone: standbyTone, left: standbyLeft, right: standbyRight } }));
+    const persist = () => window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ alarms, todos, habits, questProgress, settings, blocker: blockerWithRewards, standby: { clock: standbyClock, font: standbyFont, tone: standbyTone, left: standbyLeft, right: standbyRight } }));
     const timer = window.setTimeout(persist, 180);
     window.addEventListener("pagehide", persist);
     return () => { window.clearTimeout(timer); window.removeEventListener("pagehide", persist); };
-  }, [hydrated, alarms, todos, habits, questProgress, checkins, settings, blocker, standbyClock, standbyFont, standbyTone, standbyLeft, standbyRight]);
+  }, [hydrated, alarms, todos, habits, questProgress, settings, blocker, standbyClock, standbyFont, standbyTone, standbyLeft, standbyRight]);
   useEffect(() => {
     if (!hydrated) return;
     try { window.MachAndroid?.syncAlarms(JSON.stringify(alarms)); } catch { /* Browser preview */ }
@@ -603,7 +574,7 @@ export default function App() {
     window.machHandleBack = handleBack;
     return () => { if (window.machHandleBack === handleBack) delete window.machHandleBack; };
   }, [alarmDraft, todoModal, chooseTodo, screen, nightMode, sheetClosing]);
-  useEffect(() => { scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" }); }, [screen, coachTab]);
+  useEffect(() => { scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" }); }, [screen]);
   useEffect(() => {
     const orientation = window.matchMedia("(orientation: landscape)");
     const update = () => setIsLandscape(orientation.matches);
@@ -619,7 +590,7 @@ export default function App() {
     } catch { setQrMatrix(null); }
   }, [screen, alarmDraft?.challenge]);
   useEffect(() => {
-    if (screen !== "blocker") return;
+    if (screen !== "blocker" && screen !== "quests" && screen !== "settings") return;
     try {
       if (!installedApps.length) {
         const apps = window.MachAndroid?.getInstalledApps?.();
@@ -660,23 +631,6 @@ export default function App() {
   }, [focusState.active]);
 
   const upcoming = useMemo(() => alarms.map(alarm => ({ alarm, date: nextOccurrence(alarm, now) })).filter(item => item.date).sort((a, b) => itemTime(a.date) - itemTime(b.date)), [alarms, now]);
-  const analysis = useMemo(() => {
-    if (!checkins.length) return { need: 450, success: 0, confidence: 0, direct: 0, late: 0, miss: 0, averageSnoozes: 0, spread: 0 };
-    const recent = checkins.slice(-21);
-    const samples = recent.map((entry, index) => ({
-      value: Math.max(330, Math.min(660, entry.sleepMinutes + (entry.state === "miss" ? 35 : entry.state === "late" ? 15 : 0) + entry.snoozes * 4)),
-      weight: 1 + index / Math.max(1, recent.length - 1),
-    }));
-    const weight = samples.reduce((sum, sample) => sum + sample.weight, 0);
-    const rawNeed = samples.reduce((sum, sample) => sum + sample.value * sample.weight, 0) / weight;
-    const need = Math.round(rawNeed / 5) * 5;
-    const spread = Math.sqrt(samples.reduce((sum, sample) => sum + Math.pow(sample.value - rawNeed, 2), 0) / samples.length);
-    const direct = checkins.filter(entry => entry.state === "great").length, late = checkins.filter(entry => entry.state === "late").length, miss = checkins.filter(entry => entry.state === "miss").length;
-    const sampleConfidence = Math.min(90, recent.length / 14 * 90);
-    const consistency = Math.max(35, 100 - spread * 1.4);
-    return { need, success: Math.round(direct / checkins.length * 100), confidence: Math.round(sampleConfidence * .75 + consistency * .25), direct, late, miss, averageSnoozes: checkins.reduce((sum, entry) => sum + entry.snoozes, 0) / checkins.length, spread };
-  }, [checkins]);
-  const learnedBedtime = formatMinutes(timeToMinutes(cycleTime) - analysis.need - settings.fallAsleepMinutes);
   const cycleSuggestions = useMemo(() => {
     const base = cycleMode === "sleep" ? now.getHours() * 60 + now.getMinutes() : timeToMinutes(cycleTime);
     return [4, 5, 6].map(cycles => ({ cycles, time: formatMinutes(cycleMode === "sleep" ? base + cycles * settings.cycleMinutes + settings.fallAsleepMinutes : base - cycles * settings.cycleMinutes - settings.fallAsleepMinutes) }));
@@ -696,6 +650,10 @@ export default function App() {
   const questStreak = streakFromDates(questProgress.completedDates, todayKey);
   const questLevel = Math.floor(questProgress.xp / 100) + 1;
   const questLevelProgress = questProgress.xp % 100;
+
+  useEffect(() => {
+    if (questProgress.active && now.getTime() >= questProgress.active.endsAt) finishDailyQuest();
+  }, [now, questProgress.active?.endsAt]);
 
   function itemTime(date: Date | null) { return date?.getTime() ?? Number.MAX_SAFE_INTEGER; }
   function showToast(message: string) { setToast(message); window.setTimeout(() => setToast(""), 2400); }
@@ -731,7 +689,7 @@ export default function App() {
     const safeSettings = { ...settings, alarmNfcToken: "", qrVerified: false, sound: settings.sound.startsWith("custom:") ? "Systemstandard" : settings.sound };
     const safeAlarms = alarms.map(alarm => ({ ...alarm, nfcToken: "", sound: alarm.sound.startsWith("custom:") ? "Systemstandard" : alarm.sound }));
     const safeBlocker = { ...blocker, nfcToken: "", hasPassword: false, hasPasswords: {}, rewardMinutesAvailable: questProgress.rewardMinutesAvailable };
-    const state = { alarms: safeAlarms, todos, habits, questProgress, checkins, settings: safeSettings, blocker: safeBlocker, standby: { clock: standbyClock, font: standbyFont, tone: standbyTone, left: standbyLeft, right: standbyRight } };
+    const state = { alarms: safeAlarms, todos, habits, questProgress, settings: safeSettings, blocker: safeBlocker, standby: { clock: standbyClock, font: standbyFont, tone: standbyTone, left: standbyLeft, right: standbyRight } };
     const backup = JSON.stringify({ format: "mach-backup", version: 1, exportedAt: new Date().toISOString(), state });
     if (window.MachAndroid?.createBackup) window.MachAndroid.createBackup(backup);
     else {
@@ -825,12 +783,25 @@ export default function App() {
     const today = localDate();
     setHabits(current => current.map(habit => habit.id !== id ? habit : changeHabitResult(habit, today, failed)));
   }
-  function completeDailyQuest() {
-    if (questDoneToday) return;
-    const reward = rewardProgress(questProgress.xp, dailyQuest.xp, 100, settings.questRewardMinutes, questProgress.rewardMinutesAvailable, settings.questRewardCap);
-    setQuestProgress(current => ({ ...current, completedDates: [...current.completedDates, todayKey], xp: reward.xp, rewardMinutesAvailable: reward.availableMinutes }));
-    setBlocker(current => ({ ...current, rewardMinutesAvailable: reward.availableMinutes }));
-    showToast(reward.earnedMinutes ? `Quest geschafft · +${dailyQuest.xp} XP · +${reward.earnedMinutes} Bonusminuten` : `Quest geschafft · +${dailyQuest.xp} XP`);
+  function finishDailyQuest() {
+    const active = questProgress.active;
+    if (!active || active.date !== todayKey || Date.now() < active.endsAt || questDoneToday) return;
+    const quest = questPortfolio.find(item => item.id === active.id) ?? dailyQuest;
+    const reward = rewardProgress(questProgress.xp, quest.xp, 100, settings.questRewardMinutes, questProgress.rewardMinutesAvailable, settings.questRewardCap);
+    setQuestProgress(current => ({ ...current, active: undefined, completedDates: [...current.completedDates.filter(date => date !== todayKey), todayKey], xp: reward.xp, rewardMinutesAvailable: reward.availableMinutes }));
+    setBlocker(current => ({ ...current, questUntil: 0, questPackages: [], rewardMinutesAvailable: reward.availableMinutes }));
+    showToast(reward.earnedMinutes ? `Quest geschafft · +${quest.xp} XP · +${reward.earnedMinutes} Bonusminuten` : `Quest geschafft · +${quest.xp} XP`);
+  }
+  function startDailyQuest() {
+    if (!dailyQuest || questDoneToday) return;
+    if (questProgress.active?.date === todayKey && questProgress.active.endsAt > Date.now()) return;
+    if (!settings.questPackages.length) { showToast("Wähle zuerst Apps für Tagesquests in den Einstellungen aus"); setScreen("settings"); return; }
+    if (!accessibilityEnabled && window.MachAndroid) { window.MachAndroid.openAccessibilitySettings?.(); showToast("Erlaube zuerst den App-Blocker-Zugriff"); return; }
+    const startedAt = Date.now();
+    const active: ActiveQuest = { id: dailyQuest.id, date: todayKey, startedAt, endsAt: startedAt + dailyQuest.durationMinutes * 60_000, packages: settings.questPackages };
+    setQuestProgress(current => ({ ...current, active }));
+    setBlocker(current => ({ ...current, questUntil: active.endsAt, questPackages: active.packages }));
+    showToast(`${active.packages.length} Apps sind bis zum Ablauf der Quest gesperrt`);
   }
   function habitStreak(habit: Habit) {
     let streak = 0;
@@ -855,14 +826,6 @@ export default function App() {
       return { ...current, windows };
     });
     showToast(window ? `Nutzungszeit ${window.start}–${window.end} gespeichert` : "Nutzungsfenster entfernt");
-  }
-  function logCheckin(state: CheckinState) {
-    if (!pendingWake) return;
-    const plannedSleep = pendingWake.plannedSleep || settings.bedtime;
-    const sleepMinutes = durationBetween(plannedSleep, pendingWake.plannedTime);
-    setCheckins(current => [...current.filter(entry => entry.eventId !== pendingWake.eventId), { ...pendingWake, state, checkedAt: Date.now(), plannedSleep, sleepMinutes }]);
-    window.MachAndroid?.completeMorningCheck?.(pendingWake.eventId, state);
-    setPendingWake(null); showToast("Morgencheck gespeichert");
   }
   function enterStandby() { setStandbyEditing(null); setNightMode(true); window.MachAndroid?.enterStandby?.(); }
   function exitStandby() { setStandbyEditing(null); setNightMode(false); window.MachAndroid?.exitStandby?.(); }
@@ -901,15 +864,19 @@ export default function App() {
     }
   }
 
-  function renderQuestCard(compact = false) {
-    if (!questProgress.enabled) return null;
-    return <section className={`daily-quest ${questDoneToday ? "complete" : ""} ${compact ? "compact" : ""}`}>
-      <div className="quest-top"><div><span className="overline">TAGESQUEST · {dailyQuest.category.toUpperCase()}</span><h3>{questDoneToday ? "Heute durchgezogen" : dailyQuest.title}</h3></div><span className="quest-xp">+{dailyQuest.xp} XP</span></div>
-      <p>{questDoneToday ? "Die nächste Überraschungsquest erscheint morgen." : dailyQuest.detail}</p>
-      <div className="quest-level"><span>Level {questLevel}</span><div><i style={{ width: `${questLevelProgress}%` }} /></div><strong>{questLevelProgress}/100 XP</strong></div>
-      <div className="quest-stats"><span>🔥 {questStreak} Tage</span><span>🎟 {questProgress.rewardMinutesAvailable} Bonusminuten</span></div>
-      {!questDoneToday && <button type="button" className="quest-complete" onClick={completeDailyQuest}>Quest geschafft</button>}
-    </section>;
+  function renderQuests() {
+    if (!questPortfolio.length) return <><ScreenHeader eyebrow="HINZUFÜGEN" title="Tagesquests" /><div className="empty-state"><span>＋</span><h3>Noch keine Quests</h3><p>Füge in ui/src/quests.json eine Quest hinzu und starte den nächsten Build.</p></div></>;
+    const active = questProgress.active?.date === todayKey ? questProgress.active : undefined;
+    const remaining = active ? Math.max(0, active.endsAt - now.getTime()) : 0;
+    return <><ScreenHeader eyebrow="HINZUFÜGEN" title="Tagesquest" />
+      {!questProgress.enabled ? <section className="settings-card"><h3>Tagesquests sind ausgeschaltet</h3><p>Aktiviere sie in den Einstellungen, um täglich eine Quest zu erhalten.</p></section> : <section className={`daily-quest ${questDoneToday ? "complete" : ""}`}>
+        <div className="quest-top"><div><span className="overline">TAGESQUEST · {dailyQuest.category.toUpperCase()}</span><h3>{questDoneToday ? "Heute durchgezogen" : dailyQuest.title}</h3></div><span className="quest-xp">+{dailyQuest.xp} XP</span></div>
+        <p>{questDoneToday ? "Die nächste Quest erscheint morgen." : dailyQuest.detail}</p>
+        <div className="quest-stats"><span>⏱ {dailyQuest.durationMinutes} Minuten</span><span>🔒 {settings.questPackages.length} Apps ausgewählt</span></div>
+        {active ? <div className="quest-running"><strong>{formatCountdown(remaining)}</strong><span>Die Quest läuft. Die ausgewählten Apps bleiben bis zum Ablauf gesperrt.</span></div> : questDoneToday ? null : <button type="button" className="quest-complete" onClick={startDailyQuest}>Quest starten & Apps sperren</button>}
+      </section>}
+      <section className="settings-card"><span className="overline">FORTSCHRITT</span><div className="quest-level"><span>Level {questLevel}</span><div><i style={{ width: `${questLevelProgress}%` }} /></div><strong>{questLevelProgress}/100 XP</strong></div><div className="quest-stats"><span>🔥 {questStreak} Tage</span><span>🎟 {questProgress.rewardMinutesAvailable} Bonusminuten</span></div></section>
+    </>;
   }
 
   function renderHome() {
@@ -921,11 +888,7 @@ export default function App() {
         {upcoming.length ? <><div className="alarm-carousel" onScroll={event => setAlarmSlide(Math.round(event.currentTarget.scrollLeft / event.currentTarget.clientWidth))}>{upcoming.map(({ alarm, date }) => <article className="hero-card" key={alarm.id} onClick={() => setAlarmDraft({ ...alarm })}><div className="moon-orbit"><span>☾</span></div><div><span className="overline">NÄCHSTER WECKER</span><div className="alarm-time">{alarm.time}</div><p>{date?.toLocaleDateString("de-DE", { weekday: "long" })} · {challengeNames[alarm.challenge]}</p></div><Toggle on={alarm.enabled} label="Wecker umschalten" onClick={() => setAlarms(current => current.map(item => item.id === alarm.id ? { ...item, enabled: !item.enabled } : item))} /></article>)}</div><div className="carousel-dots">{upcoming.map((_, index) => <i key={index} className={alarmSlide === index ? "active" : ""} />)}</div></> : <article className="hero-card empty-hero"><div className="moon-orbit"><span>☾</span></div><div><span className="overline">NÄCHSTER WECKER</span><h3>Noch keiner gestellt</h3><p>Erstelle deinen ersten Wecker im Wecker-Tab.</p></div><button type="button" className="small-primary" onClick={() => { setScreen("alarms"); openNewAlarm(); }}>＋</button></article>}
       </section>
       <div className="quick-row home-quick-row"><button type="button" className="wide-quick" onClick={enterStandby}><span>◐</span><div><strong>Standby-Modus</strong><small>Uhr, Kalender und Widgets im Querformat</small></div></button></div>
-      <div className="section-title"><h3>Dein Rhythmus</h3><button type="button" onClick={() => { setScreen("coach"); setCoachTab("analysis"); }}>Auswertung →</button></div>
-      <div className="bento-grid"><button type="button" className="metric-card mint" onClick={() => { setScreen("coach"); setCoachTab("analysis"); }}><span className="card-icon">↗</span><strong>{checkins.length ? `${analysis.success}%` : "–"}</strong><p>{checkins.length ? "direkt aufgestanden" : "noch keine Daten"}</p></button><button type="button" className="metric-card dark" onClick={() => { setScreen("coach"); setCoachTab("rhythm"); }}><span className="card-icon">◴</span><strong>{checkins.length ? formatDuration(analysis.need) : "–"}</strong><p>{checkins.length ? "geschätzter Schlafbedarf" : "lernt mit jedem Check"}</p></button></div>
-      <section className={`morning-check ${pendingWake ? "ready" : ""}`}><div><span className="overline">MORGENCHECK</span><h3>{pendingWake ? `Wie lief das Aufstehen um ${pendingWake.plannedTime}?` : "Wie lief das Aufstehen?"}</h3><p>{pendingWake ? "Deine Antwort verbessert die persönliche Berechnung." : "Erscheint nach einem wirklich beendeten Wecker."}</p></div><div className="mood-row two">{([{ id: "great", icon: "↑", label: "Direkt auf" }, { id: "miss", icon: "×", label: "Verschlafen" }] as const).map(item => <button type="button" key={item.id} disabled={!pendingWake} onClick={() => logCheckin(item.id)}><span>{item.icon}</span><small>{item.label}</small></button>)}</div></section>
       <section className="home-todo-preview"><div className="home-todo-title"><div><span className="overline">HEUTE</span><h3>Deine To-dos</h3></div><button type="button" onClick={() => setScreen("todos")}>Alle ansehen →</button></div>{todos.filter(todo => !todo.done).slice(0, 3).length ? todos.filter(todo => !todo.done).slice(0, 3).map(todo => <button type="button" key={todo.id} className="home-todo-row" onClick={() => toggleTodo(todo.id)}><i /> <span>{todo.text}</span></button>) : <button type="button" className="home-todo-empty" onClick={() => { setScreen("todos"); setTodoTab("open"); }}>Alles erledigt · neue Aufgabe hinzufügen</button>}<div className="habit-summary"><span>{habits.filter(habit => !habit.completedDates.includes(localDate()) && !habit.missedDates.includes(localDate())).length}</span><small>Habits heute noch offen</small></div></section>
-      {renderQuestCard(true)}
     </>;
   }
 
@@ -952,17 +915,10 @@ export default function App() {
   function renderAlarms() {
     return <><ScreenHeader eyebrow="AUFSTEHEN" title="Deine Wecker" action="＋" onAction={() => openNewAlarm()} />
       <section className="alarm-cycle-panel"><div className="cycle-card quick-cycle-card"><span className="overline">SCHNELLPLANER</span><h3>{cycleMode === "wake" ? "Wann willst du aufstehen?" : "Du gehst jetzt schlafen"}</h3><div className="choice-row"><button type="button" className={cycleMode === "wake" ? "active" : ""} onClick={() => setCycleMode("wake")}>Aufstehen um</button><button type="button" className={cycleMode === "sleep" ? "active" : ""} onClick={() => setCycleMode("sleep")}>Ich schlafe jetzt</button></div>{cycleMode === "wake" ? <TimePicker label="Gewünschte Aufstehzeit" value={cycleTime} onChange={setCycleTime} /> : <div className="current-sleep-time"><strong>{pad(now.getHours())}:{pad(now.getMinutes())}</strong><span>aktuelle Uhrzeit · nicht veränderbar</span></div>}<p className="science-note">Orientierung mit {settings.cycleMinutes} Minuten pro Zyklus plus {settings.fallAsleepMinutes} Minuten Einschlafzeit. Beides kannst du in den Einstellungen ändern.</p></div>
-        <div className="quick-suggestions"><div className="quick-suggestion-title"><strong>{cycleMode === "wake" ? "Passende Einschlafzeiten" : "Passende Weckzeiten"}</strong><span>4–6 Zyklen</span></div><div className="suggestion-list">{cycleSuggestions.map(item => <button type="button" className={selectedCycle === item.cycles ? "selected" : ""} key={item.cycles} onClick={() => selectCycle(item.cycles)}><div><strong>{item.time}</strong><span>{item.cycles} Zyklen · {formatDuration(item.cycles * settings.cycleMinutes)}</span></div><em>{Math.abs(item.cycles * settings.cycleMinutes - analysis.need) <= Math.max(20, settings.cycleMinutes / 2) ? "empfohlen" : `${item.cycles} Zyklen`}</em></button>)}</div><button type="button" className="cycle-apply" onClick={applyCycle}>{cycleMode === "wake" ? `Wecker für ${cycleTime} erstellen` : "Daraus Wecker erstellen"}</button></div></section>
+        <div className="quick-suggestions"><div className="quick-suggestion-title"><strong>{cycleMode === "wake" ? "Passende Einschlafzeiten" : "Passende Weckzeiten"}</strong><span>4–6 Zyklen</span></div><div className="suggestion-list">{cycleSuggestions.map(item => <button type="button" className={selectedCycle === item.cycles ? "selected" : ""} key={item.cycles} onClick={() => selectCycle(item.cycles)}><div><strong>{item.time}</strong><span>{item.cycles} Zyklen · {formatDuration(item.cycles * settings.cycleMinutes)}</span></div><em>{item.cycles === 5 ? "empfohlen" : `${item.cycles} Zyklen`}</em></button>)}</div><button type="button" className="cycle-apply" onClick={applyCycle}>{cycleMode === "wake" ? `Wecker für ${cycleTime} erstellen` : "Daraus Wecker erstellen"}</button></div></section>
       {renderFocusTimer()}
       <div className="section-title alarm-section-title"><h3>Gespeicherte Wecker</h3><span>{alarms.length || "keine"}</span></div>
       <section className="alarm-list">{alarms.length ? alarms.map(alarm => <article className={`alarm-item ${alarm.enabled ? "enabled" : ""}`} key={alarm.id} onClick={() => setAlarmDraft({ ...alarm })}><div className="alarm-top"><strong>{alarm.time}</strong><Toggle on={alarm.enabled} label={`${alarm.label} umschalten`} onClick={() => setAlarms(current => current.map(item => item.id === alarm.id ? { ...item, enabled: !item.enabled } : item))} /></div><h3>{alarm.label}</h3><p>{formatDays(alarm)}</p><div className="challenge-pill"><span>◆</span>{challengeNames[alarm.challenge]}</div><div className="alarm-actions"><button type="button" onClick={event => { event.stopPropagation(); setAlarmDraft({ ...alarm }); }}>Bearbeiten</button><button type="button" className="danger" onClick={event => { event.stopPropagation(); deleteAlarm(alarm.id); }}>Löschen</button></div></article>) : <div className="empty-state"><span>◴</span><h3>Noch keine Wecker</h3><p>Tippe oben auf Plus, um deinen ersten Wecker zu erstellen.</p></div>}</section>
-    </>;
-  }
-
-  function renderCoach() {
-    const recent = [...checkins].sort((a, b) => b.checkedAt - a.checkedAt).slice(0, 7).reverse();
-    return <><ScreenHeader eyebrow="SCHLAFCOACH" title="Deine Auswertung" /><div className="segmented-control coach-tabs"><button type="button" className={coachTab === "analysis" ? "active" : ""} onClick={() => setCoachTab("analysis")}>Analyse</button><button type="button" className={coachTab === "rhythm" ? "active" : ""} onClick={() => setCoachTab("rhythm")}>Rhythmus</button></div>
-      {coachTab === "analysis" ? <>{checkins.length ? <><section className="sleep-target-card"><span className="overline">DEINE GELERNTE SCHLAFZEIT</span><div><strong>{learnedBedtime}</strong><small>ins Bett bei Aufstehen um {cycleTime}</small></div><p>Enthält {formatDuration(analysis.need)} geschätzten Schlafbedarf plus {settings.fallAsleepMinutes} Minuten Einschlafzeit.</p><div className="confidence"><i style={{ width: `${analysis.confidence}%` }} /></div><em>{analysis.confidence}% Sicherheit aus {Math.min(checkins.length, 21)} Versuchen</em></section><div className="stats-grid"><article><strong>{analysis.success}%</strong><span>direkt auf</span></article><article><strong>{analysis.miss}</strong><span>verschlafen</span></article><article><strong>{formatDuration(analysis.need)}</strong><span>gelernter Bedarf</span></article><article><strong>{analysis.averageSnoozes.toFixed(1)}</strong><span>Ø Snoozes</span></article></div><section className="week-card"><div><span className="overline">LETZTE VERSUCHE</span><h3>Zyklen und echte Morgen</h3></div><div className="week-bars">{recent.map(entry => <div key={entry.eventId}><i className={entry.state} style={{ height: entry.state === "great" ? "88%" : "28%" }} /><span>{new Date(entry.checkedAt).toLocaleDateString("de-DE", { weekday: "short" })}</span></div>)}</div></section></> : <div className="empty-state coach-empty"><span>⌁</span><h3>Die Analyse beginnt mit deinem ersten Wecker</h3><p>Probiere Zyklus-Wecker oder eigene Schlafzeiten aus. Nach jedem Morgen lernt MACH aus „Direkt auf“ oder „Verschlafen“.</p></div>}</> : <><section className="rhythm-card"><span className="overline">DER LERNALGORITHMUS</span><h3>Jeder echte Versuch verändert deine Empfehlung</h3><ol><li><strong>Schlafdauer</strong><span>Geplante Einschlafzeit und Weckzeit ergeben die getestete Dauer.</span></li><li><strong>Ergebnis</strong><span>Verschlafen und Snoozes erhöhen den geschätzten Bedarf; direktes Aufstehen bestätigt ihn.</span></li><li><strong>Gewichtung</strong><span>Neuere Versuche zählen stärker. Schwankende Ergebnisse senken die angezeigte Sicherheit.</span></li></ol></section><section className="recommendation-card"><span className="overline">NÄCHSTER VERSUCH</span><h3>{checkins.length ? `${learnedBedtime} ins Bett` : "Erst Daten sammeln"}</h3><p>{checkins.length ? `Für ${cycleTime} Uhr Aufstehen empfiehlt MACH aktuell ${learnedBedtime}. Weitere Morgen machen die Schätzung genauer.` : "Stelle einen Wecker und beantworte danach den Morgencheck."}</p></section></>}
     </>;
   }
 
@@ -992,19 +948,18 @@ export default function App() {
     });
     const openCount = todos.filter(item => !item.done).length + habits.filter(habit => !habit.completedDates.includes(localDate()) && !habit.missedDates.includes(localDate())).length;
     const openHabits = habits.filter(habit => !habit.completedDates.includes(localDate()) && !habit.missedDates.includes(localDate()));
-    return <><ScreenHeader eyebrow="FOKUS" title="Deine Aufgaben" action="＋" onAction={() => { resetSheet(); setChooseTodo(true); }} />{renderQuestCard()}<section className="consistency-card"><div><span className="overline">KONSTANZ</span><h3>{now.toLocaleDateString("de-DE", { month: "long", year: "numeric" })}</h3></div><div className="consistency-weekdays">{["M","D","M","D","F","S","S"].map((day,index) => <span key={index}>{day}</span>)}</div><div className="consistency-grid">{heatmap.map((day,index) => day ? <i key={day.key} className={day.state} title={`${day.key}: ${day.state === "complete" ? "geschafft" : day.state === "missed" ? "nicht geschafft" : "keine Einträge"}`}>{day.day}</i> : <i key={`blank-${index}`} className="blank" />)}</div><div className="consistency-legend"><span><i className="complete" /> geschafft</span><span><i className="missed" /> nicht geschafft</span></div></section><div className="segmented-control todo-tabs"><button type="button" className={todoTab === "open" ? "active" : ""} onClick={() => setTodoTab("open")}>Offen · {openCount}</button><button type="button" className={todoTab === "habits" ? "active" : ""} onClick={() => setTodoTab("habits")}>Habits · {habits.length}</button><button type="button" className={todoTab === "done" ? "active" : ""} onClick={() => setTodoTab("done")}>Erledigt · {todos.filter(item => item.done).length}</button></div>{todoTab === "open" && <><section className="open-habits">{openHabits.map(habit => renderHabitRow(habit))}</section><section className="todo-list">{todos.filter(todo => !todo.done).length ? todos.filter(todo => !todo.done).map(todo => <article key={todo.id}><button type="button" className="todo-check" onClick={() => toggleTodo(todo.id)} /><div className="todo-copy"><span>{todo.text}</span>{todo.reminderAt && <small>◴ {new Date(todo.reminderAt).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</small>}</div><button type="button" className="todo-delete" aria-label="Aufgabe löschen" onClick={() => setTodos(current => current.filter(item => item.id !== todo.id))}><TrashIcon /></button></article>) : !openHabits.length && <div className="empty-state"><span>✓</span><h3>Alles frei</h3></div>}</section></>}{todoTab === "habits" && <section className="habit-list">{habits.length ? habits.map(habit => renderHabitRow(habit, true)) : <div className="empty-state"><span>↻</span><h3>Noch keine Habits</h3><p>Über Plus legst du ein tägliches Ziel an.</p></div>}</section>}{todoTab === "done" && <section className="todo-list">{todos.filter(todo => todo.done).length ? todos.filter(todo => todo.done).map(todo => <article key={todo.id} className="done"><button type="button" className="todo-check" onClick={() => toggleTodo(todo.id)}>✓</button><div className="todo-copy"><span>{todo.text}</span></div><button type="button" className="todo-delete" aria-label="Aufgabe löschen" onClick={() => setTodos(current => current.filter(item => item.id !== todo.id))}><TrashIcon /></button></article>) : <div className="empty-state"><span>✓</span><h3>Noch nichts erledigt</h3></div>}</section>}</>;
+    return <><ScreenHeader eyebrow="FOKUS" title="Deine Aufgaben" action="＋" onAction={() => { resetSheet(); setChooseTodo(true); }} /><section className="consistency-card"><div><span className="overline">KONSTANZ</span><h3>{now.toLocaleDateString("de-DE", { month: "long", year: "numeric" })}</h3></div><div className="consistency-weekdays">{["M","D","M","D","F","S","S"].map((day,index) => <span key={index}>{day}</span>)}</div><div className="consistency-grid">{heatmap.map((day,index) => day ? <i key={day.key} className={day.state} title={`${day.key}: ${day.state === "complete" ? "geschafft" : day.state === "missed" ? "nicht geschafft" : "keine Einträge"}`}>{day.day}</i> : <i key={`blank-${index}`} className="blank" />)}</div><div className="consistency-legend"><span><i className="complete" /> geschafft</span><span><i className="missed" /> nicht geschafft</span></div></section><div className="segmented-control todo-tabs"><button type="button" className={todoTab === "open" ? "active" : ""} onClick={() => setTodoTab("open")}>Offen · {openCount}</button><button type="button" className={todoTab === "habits" ? "active" : ""} onClick={() => setTodoTab("habits")}>Habits · {habits.length}</button><button type="button" className={todoTab === "done" ? "active" : ""} onClick={() => setTodoTab("done")}>Erledigt · {todos.filter(item => item.done).length}</button></div>{todoTab === "open" && <><section className="open-habits">{openHabits.map(habit => renderHabitRow(habit))}</section><section className="todo-list">{todos.filter(todo => !todo.done).length ? todos.filter(todo => !todo.done).map(todo => <article key={todo.id}><button type="button" className="todo-check" onClick={() => toggleTodo(todo.id)} /><div className="todo-copy"><span>{todo.text}</span>{todo.reminderAt && <small>◴ {new Date(todo.reminderAt).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</small>}</div><button type="button" className="todo-delete" aria-label="Aufgabe löschen" onClick={() => setTodos(current => current.filter(item => item.id !== todo.id))}><TrashIcon /></button></article>) : !openHabits.length && <div className="empty-state"><span>✓</span><h3>Alles frei</h3></div>}</section></>}{todoTab === "habits" && <section className="habit-list">{habits.length ? habits.map(habit => renderHabitRow(habit, true)) : <div className="empty-state"><span>↻</span><h3>Noch keine Habits</h3><p>Über Plus legst du ein tägliches Ziel an.</p></div>}</section>}{todoTab === "done" && <section className="todo-list">{todos.filter(todo => todo.done).length ? todos.filter(todo => todo.done).map(todo => <article key={todo.id} className="done"><button type="button" className="todo-check" onClick={() => toggleTodo(todo.id)}>✓</button><div className="todo-copy"><span>{todo.text}</span></div><button type="button" className="todo-delete" aria-label="Aufgabe löschen" onClick={() => setTodos(current => current.filter(item => item.id !== todo.id))}><TrashIcon /></button></article>) : <div className="empty-state"><span>✓</span><h3>Noch nichts erledigt</h3></div>}</section>}</>;
   }
 
   function renderSettings() {
     const numberSetting = (id: string, label: string, value: number, update: (value: number) => void, min = 1, max = 1440, unit = "Min.") => <NumberField id={id} label={label} value={value} onCommit={update} min={min} max={max} unit={unit} />;
     return <><ScreenHeader eyebrow="MACH." title="Einstellungen" /><section className="settings-card"><label className="field-label" htmlFor="profile-name">Dein Name</label><input id="profile-name" type="text" placeholder="Optional" value={settings.name} onChange={event => setSettings(current => ({ ...current, name: event.target.value }))} /><label className="field-label" htmlFor="app-font">Schrift in der App</label><select id="app-font" value={settings.appFont} onChange={event => setSettings(current => ({ ...current, appFont: event.target.value as Settings["appFont"] }))}><option value="modern">Modern</option><option value="rounded">Weich & rund</option><option value="classic">Klassisch</option></select><label className="field-label">Farbpalette</label><div className="palette-options" role="group" aria-label="Farbpalette">{([{ id: "classic", name: "Original", colors: ["#06131f", "#c9dcf8", "#9bf5b1", "#ffd347"] }, { id: "solar", name: "Sonnenwärme", colors: ["#003049", "#d62828", "#f77f00", "#fcbf49", "#eae2b7"] }, { id: "dusk", name: "Abendruhe", colors: ["#191629", "#c2b2f1", "#90cdb7", "#edd9bc"] }] as const).map(palette => <button type="button" key={palette.id} aria-pressed={settings.palette === palette.id} className={settings.palette === palette.id ? "selected" : ""} onClick={() => setSettings(current => ({ ...current, palette: palette.id }))}><span className="palette-swatches">{palette.colors.map(color => <i key={color} style={{ background: color }} />)}</span><strong>{palette.name}</strong><span className="palette-check">{settings.palette === palette.id ? "✓" : ""}</span></button>)}</div></section>
       <section className="settings-card"><span className="overline">EINSCHLAF-ERINNERUNGEN</span><div className="switch-row"><div><strong>Zusätzlicher täglicher Plan</strong><small>Zyklus-Wecker steuern ihre Erinnerung automatisch</small></div><Toggle on={settings.remindersOn} label="Tägliche Schlafenszeit-Erinnerungen" onClick={() => setSettings(current => ({ ...current, remindersOn: !current.remindersOn }))} /></div>{settings.remindersOn && <><label className="field-label">Täglich ab</label><TimePicker label="Schlafenszeit" value={settings.bedtime} onChange={value => setSettings(current => ({ ...current, bedtime: value }))} /></>}<div className="choice-row"><button type="button" className={settings.nagMode === "fixed" ? "active" : ""} onClick={() => setSettings(current => ({ ...current, nagMode: "fixed" }))}>Gleichmäßig</button><button type="button" className={settings.nagMode === "urgent" ? "active" : ""} onClick={() => setSettings(current => ({ ...current, nagMode: "urgent" }))}>Immer kürzer</button></div>{numberSetting("interval", settings.nagMode === "fixed" ? "Erinnerung alle" : "Erster Abstand", settings.reminderInterval, value => setSettings(current => ({ ...current, reminderInterval: value, reminderMinimumInterval: Math.min(current.reminderMinimumInterval, value) })), 1)}{settings.nagMode === "urgent" && numberSetting("minimum-interval", "Kleinster Abstand", settings.reminderMinimumInterval, value => setSettings(current => ({ ...current, reminderMinimumInterval: Math.min(value, current.reminderInterval) })), 1)}{numberSetting("sleep-detect", "Als Schlaf erkannt nach", settings.sleepDetectMinutes, value => setSettings(current => ({ ...current, sleepDetectMinutes: value })), 5, 720)}<label className="field-label" htmlFor="message">Nachricht</label><textarea id="message" rows={3} value={settings.reminderMessage} onChange={event => setSettings(current => ({ ...current, reminderMessage: event.target.value }))} /><p className="field-help">Ist der Bildschirm so lange aus, gilt das Handy als weggelegt. Dann endet die Erinnerung bis zur nächsten eingestellten Schlafenszeit. Ein klingelnder Wecker beendet sie ebenfalls.</p></section>
-      <section className="settings-card"><span className="overline">NACH DEM AUFSTEHEN</span>{numberSetting("morning-delay", "Morgencheck nach", settings.morningDelay, value => setSettings(current => ({ ...current, morningDelay: value })), 0)}<p className="field-help">0 Minuten bedeutet sofort. Beim Antippen öffnet sich genau der Check für den letzten Wecker.</p></section>
       <section className="settings-card"><span className="overline">SCHLAFBERECHNUNG</span>{numberSetting("cycle-minutes", "Minuten je Schlafzyklus", settings.cycleMinutes, value => setSettings(current => ({ ...current, cycleMinutes: value })), 30, 240)}{numberSetting("sleep-onset", "Einschlafzeit", settings.fallAsleepMinutes, value => setSettings(current => ({ ...current, fallAsleepMinutes: value })), 0, 180)}<p className="field-help">Diese Werte werden im Schnellplaner verwendet und sind jederzeit änderbar.</p></section>
       <section className="settings-card"><span className="overline">ERFOLGSANZEIGE IM KALENDER</span><label className="field-label" htmlFor="consistency-mode">Wann soll ein Tag grün werden?</label><select id="consistency-mode" value={settings.consistencyMode} onChange={event => setSettings(current => ({ ...current, consistencyMode: event.target.value as Settings["consistencyMode"] }))}><option value="habits">Alle Habits geschafft</option><option value="todos">Alle To-dos geschafft</option><option value="both">Alle Habits und To-dos geschafft</option></select><p className="field-help">Standardmäßig bewertet MACH nur deine täglichen Habits.</p></section>
+      <section className="settings-card"><span className="overline">TAGESQUEST · APPS SPERREN</span><p className="field-help">Diese Apps bleiben während einer laufenden Tagesquest gesperrt. Die Sperre endet nur automatisch nach Ablauf der Quest.</p><label className="app-search"><span>⌕</span><input type="search" aria-label="Quest-Apps durchsuchen" placeholder="Apps suchen …" value={appSearch} onChange={event => setAppSearch(event.target.value)} /></label><section className="app-picker">{filteredApps.map(app => { const selected = settings.questPackages.includes(app.packageName); return <button type="button" key={app.packageName} className={selected ? "selected" : ""} onClick={() => setSettings(current => ({ ...current, questPackages: selected ? current.questPackages.filter(pkg => pkg !== app.packageName) : [...current.questPackages, app.packageName] }))}><AppIcon app={app} /><span><strong>{app.label}</strong><small>{app.packageName}</small></span><i>{selected ? "✓" : ""}</i></button>; })}{!filteredApps.length && <div className="empty-state"><span>⌕</span><h3>{appSearch ? "Keine passenden Apps" : "Apps werden vorbereitet"}</h3></div>}</section></section>
       <section className="settings-card"><span className="overline">TAGESQUESTS & BELOHNUNGEN</span><div className="switch-row"><div><strong>Tägliche Überraschungsquest</strong><small>Eine lokale Aufgabe pro Kalendertag</small></div><Toggle on={questProgress.enabled} label="Tagesquests" onClick={() => setQuestProgress(current => ({ ...current, enabled: !current.enabled }))} /></div><label className="field-label" htmlFor="quest-difficulty">Schwierigkeit</label><select id="quest-difficulty" value={questProgress.difficulty} onChange={event => setQuestProgress(current => ({ ...current, difficulty: event.target.value as QuestProgress["difficulty"] }))}><option value="mixed">Gemischt</option><option value="easy">Leicht</option><option value="medium">Mittel</option><option value="hard">Anspruchsvoll</option></select><div className="number-grid"><NumberField label="Bonus je 100 XP" value={settings.questRewardMinutes} min={0} max={60} onCommit={value => setSettings(current => ({ ...current, questRewardMinutes: value }))} /><NumberField label="Bonus-Limit" value={settings.questRewardCap} min={0} max={240} onCommit={value => setSettings(current => ({ ...current, questRewardCap: value }))} /></div><p className="field-help">XP, Serie und Bonusminuten bleiben ausschließlich auf diesem Handy und funktionieren ohne Account.</p></section>
-      <section className="settings-card backup-card"><span className="overline">BACKUP & WIEDERHERSTELLUNG</span><h3>Fortschritt mitnehmen</h3><p className="field-help">Exportiert Wecker, Einstellungen, Aufgaben, Habits, Coach-Daten, Quests und Blocker-Regeln als lokale JSON-Datei. Android-Berechtigungen, Passwörter, eigene Audiodateien und NFC-Hardwarezugriffe werden aus Sicherheitsgründen nicht kopiert.</p><div className="dual-actions"><button type="button" className="primary-button" onClick={createBackup}>Backup speichern</button><button type="button" className="secondary-button" onClick={chooseBackup}>Backup einspielen</button></div></section>
-      {permissions.liveSupported && !permissions.liveEnabled && <section className="settings-card"><h3>Fokus als Live-Anzeige</h3><p className="field-help">Erlaube Live-Benachrichtigungen, damit Android den Timer zusätzlich neben der Uhr anzeigen kann.</p><button type="button" className="secondary-button" onClick={() => window.MachAndroid?.openLiveNotificationSettings?.()}>Live-Anzeige erlauben</button></section>}
+      <section className="settings-card backup-card"><span className="overline">BACKUP & WIEDERHERSTELLUNG</span><h3>Fortschritt mitnehmen</h3><p className="field-help">Exportiert Wecker, Einstellungen, Aufgaben, Habits, Quests und Blocker-Regeln als lokale JSON-Datei. Android-Berechtigungen, Passwörter, eigene Audiodateien und NFC-Hardwarezugriffe werden aus Sicherheitsgründen nicht kopiert.</p><div className="dual-actions"><button type="button" className="primary-button" onClick={createBackup}>Backup speichern</button><button type="button" className="secondary-button" onClick={chooseBackup}>Backup einspielen</button></div></section>
       <section className="settings-card"><span className="overline">APP-ZEIT VERBLEIBEND</span><div className="switch-row"><div><strong>Restzeit regelmäßig melden</strong><small>Nur für Apps mit aktivem Tageslimit</small></div><Toggle on={blocker.limitReminderEnabled} label="App-Restzeit erinnern" onClick={() => setBlocker(current => ({ ...current, limitReminderEnabled: !current.limitReminderEnabled }))} /></div>{blocker.limitReminderEnabled && <NumberField label="Erinnerung alle" value={blocker.limitReminderMinutes} min={1} max={1440} onCommit={value => setBlocker(current => ({ ...current, limitReminderMinutes: value }))} />}<p className="field-help">Der Abstand zählt die tatsächlich genutzte Zeit. MACH nennt dir dabei die noch übrigen Minuten.</p></section>
       <section className="settings-card"><span className="overline">AUFWACH-SCHLÜSSEL</span><h3>{settings.alarmNfcToken ? "NFC-Tag gespeichert" : "NFC-Tag einmal anlernen"}</h3><p className="field-help">Ein gespeicherter Tag steht für alle neuen NFC-Wecker bereit.</p><button type="button" className="secondary-button" onClick={() => enrollNfc("alarm")}>{settings.alarmNfcToken ? "Anderen Tag einrichten" : "Tag anlernen"}</button></section>
       <section className="settings-card"><span className="overline">STANDARD FÜR NEUE WECKER</span><label className="field-label" htmlFor="default-day">Vorausgewähltes Datum</label><select id="default-day" value={settings.defaultAlarmDay} onChange={event => setSettings(current => ({ ...current, defaultAlarmDay: event.target.value as Settings["defaultAlarmDay"] }))}><option value="today">Heute</option><option value="tomorrow">Morgen</option></select><label className="field-label" htmlFor="default-challenge">Aufwach-Aufgabe</label><select id="default-challenge" value={settings.defaultChallenge} onChange={event => setSettings(current => ({ ...current, defaultChallenge: event.target.value as Challenge }))}>{Object.entries(challengeNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><div className="number-grid">{numberSetting("shake-count", "Schüttelbewegungen", settings.shakeCount, value => setSettings(current => ({ ...current, shakeCount: value })), 3, 200, "")}{numberSetting("hold-seconds", "Display halten", settings.holdSeconds, value => setSettings(current => ({ ...current, holdSeconds: value })), 3, 120, "Sek.")}{numberSetting("snake-seconds", "Schlange folgen", settings.snakeSeconds, value => setSettings(current => ({ ...current, snakeSeconds: value })), 3, 120, "Sek.")}</div><div className="switch-row"><div><strong>Snooze anbieten</strong><small>Kann bei jedem Wecker einzeln geändert werden</small></div><Toggle on={settings.snoozeEnabled} label="Snooze" onClick={() => setSettings(current => ({ ...current, snoozeEnabled: !current.snoozeEnabled }))} /></div>{settings.snoozeEnabled && <><div className="number-grid">{numberSetting("snooze-minutes", "Erste Snooze-Zeit", settings.snoozeMinutes, value => setSettings(current => ({ ...current, snoozeMinutes: value, snoozeMinimumMinutes: Math.min(current.snoozeMinimumMinutes, value) })), 1)}{settings.snoozeAggressive && numberSetting("snooze-minimum", "Kleinste Snooze-Zeit", settings.snoozeMinimumMinutes, value => setSettings(current => ({ ...current, snoozeMinimumMinutes: Math.min(value, current.snoozeMinutes) })), 1)}</div><div className="switch-row"><div><strong>Snooze wird aggressiver</strong><small>Der Abstand halbiert sich bis zum Minimum</small></div><Toggle on={settings.snoozeAggressive} label="Aggressiver Snooze" onClick={() => setSettings(current => ({ ...current, snoozeAggressive: !current.snoozeAggressive }))} /></div></>}<label className="field-label" htmlFor="default-sound">Alarmton</label><select id="default-sound" value={settings.sound} onChange={event => setSettings(current => ({ ...current, sound: event.target.value }))}>{settings.sound.startsWith("custom:") && <option value={settings.sound}>{soundLabel(settings.sound)}</option>}<option>Systemstandard</option><option>Sanft</option><option>Klar</option><option>Kräftig</option></select><div className="dual-actions"><button type="button" className={`secondary-button ${soundPreviewing ? "preview-stop" : ""}`} onClick={previewAlarmSound}>{soundPreviewing ? "■ Stoppen" : "▶ Anhören"}</button><button type="button" className="file-picker-button" onClick={chooseAlarmSound}>＋ Eigene Datei</button></div>{soundPreviewing && <div className="sound-preview-status"><i /><span>Tonvorschau läuft</span><button type="button" onClick={previewAlarmSound}>Beenden</button></div>}<p className="field-help">Eine eigene Datei wird lokal in MACH kopiert und funktioniert danach offline.</p><div className="switch-row"><div><strong>Sanftes Licht</strong><small>Ganzer Bildschirm wird warmweiß und immer heller</small></div><Toggle on={settings.gentleWake} label="Sanftes Licht" onClick={() => setSettings(current => ({ ...current, gentleWake: !current.gentleWake }))} /></div>{settings.gentleWake && numberSetting("gentle-minutes", "Licht startet vorher", settings.gentleMinutes, value => setSettings(current => ({ ...current, gentleMinutes: value })), 1, 180)}</section>
@@ -1106,8 +1061,6 @@ export default function App() {
       return <div className="standby-calendar"><header><span>{now.toLocaleDateString("de-DE", { month: "long" }).toUpperCase()}</span><small>{now.getFullYear()}</small></header><div className="calendar-grid"><b>MO</b><b>DI</b><b>MI</b><b>DO</b><b>FR</b><b>SA</b><b>SO</b>{Array.from({ length: leading }, (_, index) => <i key={`blank-${index}`} />)}{Array.from({ length: days }, (_, index) => <i key={index + 1} className={index + 1 === now.getDate() ? "today" : ""}>{index + 1}</i>)}</div></div>;
     }
     if (widget === "alarm") return <div className="standby-metric"><span>NÄCHSTER WECKER</span><strong>{upcoming[0]?.alarm.time ?? "–:–"}</strong><small>{upcoming[0]?.alarm.label ?? "Kein Wecker aktiv"}</small></div>;
-    if (widget === "rhythm") return <div className="standby-metric"><span>AUFSTEH-ERFOLG</span><strong>{checkins.length ? `${analysis.success}%` : "–"}</strong><small>direkt aufgestanden</small></div>;
-    if (widget === "cycles") return <div className="standby-metric"><span>SCHLAFBEDARF</span><strong>{checkins.length ? formatDuration(analysis.need) : "–"}</strong><small>{analysis.confidence}% Sicherheit</small></div>;
     if (widget === "sleep") return <div className="standby-metric"><span>SCHLAFENSZEIT</span><strong>{settings.bedtime}</strong><small>{settings.remindersOn ? "Erinnerung aktiv" : "Erinnerung aus"}</small></div>;
     if (widget === "focus") return <div className={`standby-focus-widget ${focusState.active ? "active" : ""}`}><span>{focusState.active ? (focusState.phase === "work" ? "FOKUS" : "PAUSE") : "FOKUS-TIMER"}</span><strong>{focusState.active ? (focusState.ringing ? "00:00" : formatCountdown(focusState.endAt - now.getTime())) : "–:––"}</strong><small>{focusState.active ? `Runde ${focusState.round} von ${focusState.rounds}` : "Keine Session aktiv"}</small></div>;
     return <div className="standby-metric"><span>AUFGABEN</span><strong>{todos.filter(item => !item.done).length}</strong><small>noch offen</small></div>;
@@ -1119,5 +1072,5 @@ export default function App() {
     return <div className={`standby-screen tone-${standbyTone} standby-font-${standbyFont}`} onPointerUp={handleStandbyTap}>{focusState.active && !focusInCard && <div className="standby-focus-island"><i /><span>{focusState.phase === "work" ? "Fokus" : "Pause"}</span><strong>{focusState.ringing ? "00:00" : formatCountdown(focusState.endAt - now.getTime())}</strong><em>Runde {focusState.round}/{focusState.rounds}</em></div>}<div className="standby-grid"><article className={`standby-card ${standbyEditing === "left" ? "editing" : ""}`} onPointerDown={() => beginStandbyPress("left")} onPointerUp={endStandbyPress} onPointerCancel={endStandbyPress}>{renderStandbyWidget(standbyLeft)}</article><article className={`standby-card ${standbyEditing === "right" ? "editing" : ""}`} onPointerDown={() => beginStandbyPress("right")} onPointerUp={endStandbyPress} onPointerCancel={endStandbyPress}>{renderStandbyWidget(standbyRight)}</article></div>{standbyEditing && <section className="standby-panel" onPointerUp={event => event.stopPropagation()}><div className="standby-panel-title"><h3>{standbyEditing === "left" ? "Linke Seite" : "Rechte Seite"}</h3><small>Außen tippen speichert</small></div><label>Widget<select value={selectedWidget} onChange={event => standbyEditing === "left" ? setStandbyLeft(event.target.value as StandbyWidget) : setStandbyRight(event.target.value as StandbyWidget)}>{(Object.entries(standbyWidgetNames) as [StandbyWidget, string][]).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>{selectedWidget === "clock" && <label>Uhr-Stil<select value={standbyClock} onChange={event => setStandbyClock(event.target.value as "digital" | "analog")}><option value="digital">Digital</option><option value="analog">Analog</option></select></label>}{selectedWidget === "clock" && <label>Uhr-Schrift<select value={standbyFont} onChange={event => setStandbyFont(event.target.value as typeof standbyFont)}><option value="apple">Apple-artig</option><option value="soft">Weich</option><option value="mono">Monospace</option></select></label>}<div className="tone-field"><span>Farbe</span><div className="tone-row">{(["blue","amber","mint","rose"] as const).map(tone => <button type="button" aria-label={tone} key={tone} className={`tone-${tone} ${standbyTone === tone ? "active" : ""}`} onClick={() => setStandbyTone(tone)} />)}</div></div></section>}<small className="standby-hint">Gedrückt halten: Seite bearbeiten · Antippen: zurück</small></div>;
   }
 
-  return <div className="app-shell"><main className={`app-root app-font-${settings.appFont}`}><div className={`app-screen screen-${screen}`} ref={scrollRef}>{alarmRinging && <button className="ringing-banner" type="button" onClick={() => window.MachAndroid?.openRingingAlarm?.()}><span>◷</span><span><strong>Dein Wecker klingelt</strong><small>Zur Aufwachaufgabe</small></span></button>}{(screen === "home" || screen === "settings") && renderHome()}{screen === "alarms" && renderAlarms()}{screen === "coach" && renderCoach()}{screen === "todos" && renderTodos()}{screen === "blocker" && renderBlocker()}{screen === "qr" && renderQR()}</div><nav className="bottom-nav">{navItems.map(item => <button type="button" key={item.id} className={screen === item.id ? "active" : ""} onClick={() => setScreen(item.id)}><span>{item.icon}</span><small>{item.label}</small></button>)}</nav>{renderAlarmModal()}{renderTodoModal()}{renderExtraSheets()}{toast && <div className="toast">{toast}</div>}</main></div>;
+  return <div className="app-shell"><main className={`app-root app-font-${settings.appFont}`}><div className={`app-screen screen-${screen}`} ref={scrollRef}>{alarmRinging && <button className="ringing-banner" type="button" onClick={() => window.MachAndroid?.openRingingAlarm?.()}><span>◷</span><span><strong>Dein Wecker klingelt</strong><small>Zur Aufwachaufgabe</small></span></button>}{(screen === "home" || screen === "settings") && renderHome()}{screen === "alarms" && renderAlarms()}{screen === "quests" && renderQuests()}{screen === "todos" && renderTodos()}{screen === "blocker" && renderBlocker()}{screen === "qr" && renderQR()}</div><nav className="bottom-nav">{navItems.map(item => <button type="button" key={item.id} className={screen === item.id ? "active" : ""} onClick={() => setScreen(item.id)}><span>{item.icon}</span><small>{item.label}</small></button>)}</nav>{renderAlarmModal()}{renderTodoModal()}{renderExtraSheets()}{toast && <div className="toast">{toast}</div>}</main></div>;
 }

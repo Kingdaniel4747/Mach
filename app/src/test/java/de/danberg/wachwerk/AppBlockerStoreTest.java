@@ -24,10 +24,12 @@ public class AppBlockerStoreTest {
         when(prefs.getBoolean(anyString(),anyBoolean())).thenAnswer(i->values.getOrDefault(i.getArgument(0),i.getArgument(1)));
         when(prefs.getString(anyString(),anyString())).thenAnswer(i->values.getOrDefault(i.getArgument(0),i.getArgument(1)));
         when(prefs.getInt(anyString(),anyInt())).thenAnswer(i->values.getOrDefault(i.getArgument(0),i.getArgument(1)));
+        when(prefs.getLong(anyString(),anyLong())).thenAnswer(i->values.getOrDefault(i.getArgument(0),i.getArgument(1)));
         when(prefs.getStringSet(anyString(),anySet())).thenAnswer(i->values.getOrDefault(i.getArgument(0),i.getArgument(1)));
         when(editor.putBoolean(anyString(),anyBoolean())).thenAnswer(i->{values.put(i.getArgument(0),i.getArgument(1));return editor;});
         when(editor.putString(anyString(),anyString())).thenAnswer(i->{values.put(i.getArgument(0),i.getArgument(1));return editor;});
         when(editor.putInt(anyString(),anyInt())).thenAnswer(i->{values.put(i.getArgument(0),i.getArgument(1));return editor;});
+        when(editor.putLong(anyString(),anyLong())).thenAnswer(i->{values.put(i.getArgument(0),i.getArgument(1));return editor;});
         when(editor.putStringSet(anyString(),anySet())).thenAnswer(i->{values.put(i.getArgument(0),i.getArgument(1));return editor;});
     }
     private void sync(int limit,String start) {
@@ -67,5 +69,17 @@ public class AppBlockerStoreTest {
     }
     @Test public void staleUiCannotEraseEnrolledNfcKey() {
         AppBlockerStore.setToken(context,"uid:A1B2");sync(45,"12:00");assertEquals("uid:A1B2",AppBlockerStore.token(context));
+    }
+    @Test public void activeQuestBlocksOnlyItsSelectedApps() {
+        long endsAt = System.currentTimeMillis() + 60_000L;
+        AppBlockerStore.sync(context,"{\"questUntil\":" + endsAt + ",\"questPackages\":[\"example.app\"]}");
+        assertTrue(AppBlockerStore.isQuestActive(context));
+        assertTrue(AppBlockerStore.isQuestBlocked(context,"example.app"));
+        assertFalse(AppBlockerStore.isQuestBlocked(context,"other.app"));
+    }
+    @Test public void expiredQuestIsDiscardedDuringSync() {
+        AppBlockerStore.sync(context,"{\"questUntil\":1,\"questPackages\":[\"example.app\"]}");
+        assertFalse(AppBlockerStore.isQuestActive(context));
+        assertFalse(AppBlockerStore.isQuestBlocked(context,"example.app"));
     }
 }

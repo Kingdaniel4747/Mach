@@ -30,6 +30,7 @@ public class BlockScreenActivity extends Activity implements NfcAdapter.ReaderCa
     private boolean limitMode;
     private boolean scheduleMode;
     private boolean focusMode;
+    private boolean questMode;
     private boolean nfcBusy;
     private int durationMinutes = 5;
     private boolean scanning;
@@ -68,6 +69,10 @@ public class BlockScreenActivity extends Activity implements NfcAdapter.ReaderCa
                 long seconds=Math.max(0,(MorningBlockStore.until(BlockScreenActivity.this)-System.currentTimeMillis()+999)/1000);
                 status.setText(String.format(java.util.Locale.GERMANY,"%02d:%02d",seconds/60,seconds%60));
             }
+            if("quest".equals(current)) {
+                long seconds=Math.max(0,(AppBlockerStore.questUntil(BlockScreenActivity.this)-System.currentTimeMillis()+999)/1000);
+                status.setText(String.format(java.util.Locale.GERMANY,"%02d:%02d",seconds/60,seconds%60));
+            }
             handler.postDelayed(this,1000);
         }
     };
@@ -83,9 +88,21 @@ public class BlockScreenActivity extends Activity implements NfcAdapter.ReaderCa
         android.widget.ScrollView scroll=new android.widget.ScrollView(this);scroll.setFillViewport(true);scroll.addView(root);setContentView(scroll);
     }
 
+    private void buildQuestUi() {
+        LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setGravity(Gravity.CENTER);
+        root.setPadding(dp(28),dp(36),dp(28),dp(36));root.setBackgroundColor(palette.background);
+        TextView symbol=text("⏱",64,palette.success,Typeface.BOLD);root.addView(symbol);
+        TextView title=text("Tagesquest läuft",26,palette.text,Typeface.BOLD);title.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams p=matchWrap();p.topMargin=dp(24);root.addView(title,p);
+        TextView info=text(appLabel(blockedPackage)+" bleibt bis zum Ablauf deiner Tagesquest gesperrt.",16,palette.muted,Typeface.NORMAL);
+        info.setGravity(Gravity.CENTER);root.addView(info,p);
+        status=text("",58,palette.text,Typeface.BOLD);status.setGravity(Gravity.CENTER);root.addView(status,p);
+        android.widget.ScrollView scroll=new android.widget.ScrollView(this);scroll.setFillViewport(true);scroll.addView(root);setContentView(scroll);
+    }
+
     private void selectReason(String reason) {
         blockReason = reason;
-        limitMode = "limit".equals(reason); scheduleMode = "schedule".equals(reason); focusMode = "focus".equals(reason);
+        limitMode = "limit".equals(reason); scheduleMode = "schedule".equals(reason); focusMode = "focus".equals(reason); questMode = "quest".equals(reason);
         method = AppBlockerStore.method(this, BlockPolicy.scope(reason));
     }
 
@@ -93,6 +110,7 @@ public class BlockScreenActivity extends Activity implements NfcAdapter.ReaderCa
 
     private void buildUi() {
         if ("morning".equals(blockReason)) { buildMorningUi(); return; }
+        if (questMode) { buildQuestUi(); return; }
         if (("nfc".equals(method) || "qr".equals(method)) && !scanning) { beginScan(); return; }
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL); root.setGravity(Gravity.CENTER);
@@ -210,7 +228,7 @@ public class BlockScreenActivity extends Activity implements NfcAdapter.ReaderCa
     private void unlockAfterTagRemoved(Tag tag) { completeUnlock(tag); }
 
     private void completeUnlock(Tag tag) {
-        if (completed || "morning".equals(blockReason)) return;
+        if (completed || "morning".equals(blockReason) || questMode) return;
         completed = true; nfcBusy = true;
         if (pulse != null) pulse.success();
         BlockPolicy.release(this, blockedPackage, blockReason, selectedMinutes());

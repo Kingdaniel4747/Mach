@@ -37,6 +37,7 @@ public class BedtimeReceiver extends BroadcastReceiver {
             long nextReminderAt = now + nextCadenceMinutes(prefs, 0) * 60_000L;
             prefs.edit().putLong("started", now).putBoolean("sessionActive", true).putInt("count", 0)
                 .putLong("activeWakeAt", alarmStart ? intent.getLongExtra("wakeAt", 0L) : 0L)
+                .putString("activeAlarmId", alarmStart ? intent.getStringExtra("alarmId") : "")
                 .putLong("screenOffSince", screenOn ? 0L : now)
                 .putLong("nextReminderAt", nextReminderAt).apply();
             if (screenOn) postReminder(context, 0); else cancelVisibleReminders(context);
@@ -100,6 +101,8 @@ public class BedtimeReceiver extends BroadcastReceiver {
         String plans = alarmsJson == null ? "[]" : alarmsJson;
         if (plans.equals(prefs.getString("alarmPlans", "[]"))) return;
         prefs.edit().putString("alarmPlans", plans).apply();
+        String activeAlarmId = prefs.getString("activeAlarmId", "");
+        if (!activeAlarmId.isEmpty() && !containsEnabledReminder(plans, activeAlarmId)) stopSession(context);
         scheduleNextAlarmStart(context, prefs);
     }
 
@@ -168,7 +171,7 @@ public class BedtimeReceiver extends BroadcastReceiver {
     public static void stopSession(Context context) {
         SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         long activeWakeAt = prefs.getLong("activeWakeAt", 0L);
-        prefs.edit().putLong("started", 0L).putBoolean("sessionActive", false).putLong("screenOffSince", 0L).putLong("nextReminderAt", 0L).putInt("count", 0)
+        prefs.edit().putLong("started", 0L).putBoolean("sessionActive", false).putLong("screenOffSince", 0L).putLong("nextReminderAt", 0L).putInt("count", 0).putString("activeAlarmId", "")
             .putLong("activeWakeAt", 0L).putLong("suppressedWakeAt", activeWakeAt).apply();
         cancelRepeat(context);
         cancelVisibleReminders(context);
@@ -199,6 +202,7 @@ public class BedtimeReceiver extends BroadcastReceiver {
 
     private static void scheduleNextAlarmStart(Context context, SharedPreferences prefs) {
         long now = System.currentTimeMillis(), earliest = Long.MAX_VALUE, earliestWake = 0L;
+        String earliestAlarmId = "";
         long suppressedWake = prefs.getLong("suppressedWakeAt", 0L);
         try {
             JSONArray alarms = new JSONArray(prefs.getString("alarmPlans", "[]"));
@@ -215,7 +219,7 @@ public class BedtimeReceiver extends BroadcastReceiver {
                 if (duration <= 0) duration += 1_440;
                 long start = wake - duration * 60_000L;
                 if (start <= now + 1_500L && wake > now + 1_500L) start = now + 2_000L;
-                if (start > now + 1_500L && start < earliest) { earliest = start; earliestWake = wake; }
+                if (start > now + 1_500L && start < earliest) { earliest = start; earliestWake = wake; earliestAlarmId = alarm.optString("id", ""); }
             }
         } catch (Exception ignored) {}
         AlarmManager manager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
@@ -224,7 +228,7 @@ public class BedtimeReceiver extends BroadcastReceiver {
         if (existing != null) manager.cancel(existing);
         if (prefs.getBoolean("sessionActive", false)) return;
         if (earliest != Long.MAX_VALUE) {
-            Intent intent = new Intent(context, BedtimeReceiver.class).setAction(ACTION_ALARM_START).putExtra("wakeAt", earliestWake);
+            Intent intent = new Intent(context, BedtimeReceiver.class).setAction(ACTION_ALARM_START).putExtra("wakeAt", earliestWake).putExtra("alarmId", earliestAlarmId);
             PendingIntent pending = PendingIntent.getBroadcast(context, REQUEST_ALARM_START, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
             try { manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, earliest, pending); }
             catch (SecurityException denied) { manager.set(AlarmManager.RTC_WAKEUP, earliest, pending); }
@@ -239,6 +243,18 @@ public class BedtimeReceiver extends BroadcastReceiver {
         if (pending != null) manager.cancel(pending);
     }
 
+    private static boolean containsEnabledReminder(String plans, String alarmId) {
+        try {
+            JSONArray alarms = new JSONArray(plans);
+            for (int i = 0; i < alarms.length(); i++) {
+                JSONObject alarm = alarms.optJSONObject(i);
+                if (alarm != null && alarmId.equals(alarm.optString("id")) && alarm.optBoolean("enabled", false)
+                    && alarm.optBoolean("bedtimeReminderEnabled", false)) return true;
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+
     private static void postReminder(Context context, int count) {
         SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         String custom = prefs.getString("message", "Zeit, das Handy wegzulegen und schlafen zu gehen.");
@@ -249,7 +265,7 @@ public class BedtimeReceiver extends BroadcastReceiver {
         Notification notification = new Notification.Builder(context, MainActivity.BEDTIME_CHANNEL)
             .setSmallIcon(de.danberg.wachwerk.R.drawable.ic_notification)
             .setColor(Color.rgb(155, 245, 177))
-            .setContentTitle("MACH · Einschlaf-Coach")
+            .setContentTitle("MACH · Schlafenszeit")
             .setContentText(message)
             .setStyle(new Notification.BigTextStyle().bigText(message))
             .setCategory(Notification.CATEGORY_REMINDER)

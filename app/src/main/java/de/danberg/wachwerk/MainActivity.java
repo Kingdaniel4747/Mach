@@ -67,7 +67,6 @@ public class MainActivity extends Activity {
     public static final String LOCAL_APP = "file:///android_asset/site/index.html";
     public static final String ALARM_CHANNEL = "wachwerk_alarm";
     public static final String BEDTIME_CHANNEL = "wachwerk_bedtime";
-    public static final String MORNING_CHANNEL = "wachwerk_morning_check";
     public static final String GENTLE_CHANNEL = "wachwerk_gentle_wake";
     public static final String TODO_CHANNEL = "wachwerk_todo";
     public static final String FOCUS_CHANNEL = "wachwerk_focus_timer";
@@ -235,8 +234,7 @@ public class MainActivity extends Activity {
 
     private void dispatchNativeState() {
         if (!pageReady || webView == null) return;
-        String state = NativeState.getState(this, getIntent().getBooleanExtra("openMorningCheck", false));
-        getIntent().removeExtra("openMorningCheck");
+        String state = NativeState.getState(this);
         String script = "window.dispatchEvent(new CustomEvent('mach-native-state',{detail:" + state + "}));";
         handler.post(() -> webView.evaluateJavascript(script, null));
     }
@@ -272,8 +270,7 @@ public class MainActivity extends Activity {
             boolean camera = checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
             boolean dnd = manager.isNotificationPolicyAccessGranted();
             return new JSONObject().put("notifications", notifications).put("exact", exact)
-                .put("fullScreen", fullScreen).put("camera", camera).put("dnd", dnd)
-                .put("liveSupported", FocusTimerScheduler.supportsLiveUpdates()).put("liveEnabled", FocusTimerScheduler.canPostLiveUpdates(this)).toString();
+                .put("fullScreen", fullScreen).put("camera", camera).put("dnd", dnd).toString();
         } catch (Exception ignored) {
             return "{\"notifications\":false,\"exact\":false,\"fullScreen\":false,\"camera\":false,\"dnd\":false}";
         }
@@ -314,14 +311,11 @@ public class MainActivity extends Activity {
         alarms.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
         manager.createNotificationChannel(alarms);
 
-        NotificationChannel bedtime = new NotificationChannel(BEDTIME_CHANNEL, "Einschlaf-Coach", NotificationManager.IMPORTANCE_HIGH);
+        NotificationChannel bedtime = new NotificationChannel(BEDTIME_CHANNEL, "Schlafenszeit", NotificationManager.IMPORTANCE_HIGH);
         bedtime.setDescription("Hartnäckige Erinnerungen zum Schlafengehen");
         bedtime.enableVibration(true);
         manager.createNotificationChannel(bedtime);
 
-        NotificationChannel morning = new NotificationChannel(MORNING_CHANNEL, "Morgencheck", NotificationManager.IMPORTANCE_DEFAULT);
-        morning.setDescription("Frage nach dem letzten Aufstehen");
-        manager.createNotificationChannel(morning);
 
         NotificationChannel gentle = new NotificationChannel(GENTLE_CHANNEL, "Sanftes Licht", NotificationManager.IMPORTANCE_HIGH);
         gentle.setDescription("Weckt den Bildschirm vor dem eigentlichen Alarm und hellt ihn langsam auf");
@@ -394,7 +388,7 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public String getNativeState() {
-            return NativeState.getState(getApplicationContext(), getIntent().getBooleanExtra("openMorningCheck", false));
+            return NativeState.getState(getApplicationContext());
         }
 
         @JavascriptInterface
@@ -405,11 +399,6 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public String getAlarmPermissionState() { return MainActivity.this.permissionStateJson(); }
-
-        @JavascriptInterface
-        public void completeMorningCheck(String eventId, String state) {
-            NativeState.completeMorningCheck(getApplicationContext(), eventId);
-        }
 
         @JavascriptInterface
         public String getQrMatrix(String content) {
@@ -549,19 +538,6 @@ public class MainActivity extends Activity {
         public void openFullScreenSettings() {
             handler.post(() -> startActivity(new Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
                 Uri.parse("package:" + getPackageName()))));
-        }
-
-        @JavascriptInterface
-        public void openLiveNotificationSettings() {
-            handler.post(() -> {
-                Intent intent = new Intent("android.settings.APP_NOTIFICATION_PROMOTION_SETTINGS").putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
-                try {
-                    try { intent.setAction((String) Settings.class.getField("ACTION_MANAGE_APP_PROMOTED_NOTIFICATIONS").get(null)); } catch (ReflectiveOperationException ignored) {}
-                    startActivity(intent);
-                } catch (Exception unsupported) {
-                    startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName()));
-                }
-            });
         }
 
         @JavascriptInterface

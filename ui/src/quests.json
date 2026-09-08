@@ -1,0 +1,49 @@
+{
+  "quests": [
+    {
+      "id": "walk-10",
+      "title": "10 Minuten spazieren",
+      "detail": "Ohne Scrollen, nur du und ein kurzer Weg.",
+      "category": "Bewegung",
+      "difficulty": "easy",
+      "durationMinutes": 10,
+      "xp": 20
+    },
+    {
+      "id": "desk",
+      "title": "Schreibtisch zurücksetzen",
+      "detail": "Räume die Arbeitsfläche vollständig frei.",
+      "category": "Ordnung",
+      "difficulty": "easy",
+      "durationMinutes": 15,
+      "xp": 20
+    },
+    {
+      "id": "room-15",
+      "title": "15 Minuten Zimmer-Reset",
+      "detail": "Timer an und alles sichtbar Unordentliche angehen.",
+      "category": "Ordnung",
+      "difficulty": "medium",
+      "durationMinutes": 15,
+      "xp": 30
+    },
+    {
+      "id": "deep-work",
+      "title": "45 Minuten echte Fokuszeit",
+      "detail": "Eine wichtige Sache, Benachrichtigungen aus.",
+      "category": "Fokus",
+      "difficulty": "hard",
+      "durationMinutes": 45,
+      "xp": 45
+    },
+    {
+      "id": "outside-30",
+      "title": "30 Minuten rausgehen",
+      "detail": "Ein längerer Spaziergang ohne Social Media.",
+      "category": "Bewegung",
+      "difficulty": "hard",
+      "durationMinutes": 30,
+      "xp": 45
+    }
+  ]
+}
