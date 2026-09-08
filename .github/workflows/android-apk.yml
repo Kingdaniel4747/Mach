@@ -1,38 +1,82 @@
-name: MACH APK veröffentlichen
+name: MACH. APK bauen
 
 on:
   push:
     branches: [main, master]
+  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: mach-release-${{ github.ref }}
+  group: mach-apk-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  release:
-    name: Signierte APK erstellen und veröffentlichen
+  apk:
+    name: Oberfläche prüfen und Android-App bauen
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
+    env:
+      MACH_KEYSTORE_BASE64: ${{ secrets.MACH_KEYSTORE_BASE64 || secrets.WACHWERK_KEYSTORE_BASE64 }}
+      MACH_STORE_PASSWORD: ${{ secrets.MACH_STORE_PASSWORD || secrets.WACHWERK_STORE_PASSWORD }}
+      MACH_KEY_ALIAS: ${{ secrets.MACH_KEY_ALIAS || secrets.WACHWERK_KEY_ALIAS }}
+      MACH_KEY_PASSWORD: ${{ secrets.MACH_KEY_PASSWORD || secrets.WACHWERK_KEY_PASSWORD }}
 
     steps:
       - name: Code laden
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v4
 
       - name: Java einrichten
-        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
 
-      - name: Android SDK einrichten
+      - name: Node.js einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Android SDK 35 einrichten
+        run: "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'"
+
+      - name: APK-Oberfläche testen und einbetten
+        working-directory: ui
         run: |
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install 'platforms;android-35' 'build-tools;35.0.0'
+          corepack enable
+          corepack prepare pnpm@11.19.0 --activate
+          pnpm install --frozen-lockfile
+          pnpm exec tsc --noEmit
+          pnpm test
+          pnpm build
 
-      - name: Neue Version festlegen
+      - name: Native App testen und Debug-APK bauen
+        run: bash gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug
+
+      - name: Signierung prüfen
+        id: signing
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          available=true
+          for value in MACH_KEYSTORE_BASE64 MACH_STORE_PASSWORD MACH_KEY_ALIAS MACH_KEY_PASSWORD; do
+            test -n "${!value}" || available=false
+          done
+          echo "available=$available" >> "$GITHUB_OUTPUT"
+
+      - name: Debug-APK bereitstellen
+        if: github.event_name == 'pull_request' || steps.signing.outputs.available != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: MACH-debug-${{ github.run_number }}
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+
+      - name: Release-Version festlegen
+        if: steps.signing.outputs.available == 'true'
         shell: bash
         run: |
           version_code=$((100000 + GITHUB_RUN_NUMBER * 10 + GITHUB_RUN_ATTEMPT))
@@ -42,27 +86,22 @@ jobs:
           echo "MACH_VERSION_TAG=v$version_name" >> "$GITHUB_ENV"
 
       - name: Signierte APK bauen
-        working-directory: wachwerk-android
+        if: steps.signing.outputs.available == 'true'
         shell: bash
-        env:
-          WACHWERK_KEYSTORE_BASE64: ${{ secrets.WACHWERK_KEYSTORE_BASE64 }}
-          WACHWERK_STORE_PASSWORD: ${{ secrets.WACHWERK_STORE_PASSWORD }}
-          WACHWERK_KEY_ALIAS: ${{ secrets.WACHWERK_KEY_ALIAS }}
-          WACHWERK_KEY_PASSWORD: ${{ secrets.WACHWERK_KEY_PASSWORD }}
         run: |
-          for value in WACHWERK_KEYSTORE_BASE64 WACHWERK_STORE_PASSWORD WACHWERK_KEY_ALIAS WACHWERK_KEY_PASSWORD; do
-            test -n "${!value}" || { echo "GitHub-Secret $value fehlt"; exit 1; }
-          done
           umask 077
-          export WACHWERK_KEYSTORE="$RUNNER_TEMP/mach-release.jks"
-          printf '%s' "$WACHWERK_KEYSTORE_BASE64" | base64 --decode > "$WACHWERK_KEYSTORE"
+          export MACH_KEYSTORE="$RUNNER_TEMP/mach-release.jks"
+          printf '%s' "$MACH_KEYSTORE_BASE64" | base64 --decode > "$MACH_KEYSTORE"
           bash gradlew --no-daemon assembleRelease
 
-      - name: GitHub-Release veröffentlichen
+      - name: Signierte APK veröffentlichen
+        if: steps.signing.outputs.available == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir release
-          cp wachwerk-android/app/build/outputs/apk/release/app-release.apk "release/MACH-$MACH_VERSION_NAME.apk"
-          gh release create "$MACH_VERSION_TAG" "release/MACH-$MACH_VERSION_NAME.apk" --target "$GITHUB_SHA" --title "MACH $MACH_VERSION_NAME" --notes "Signierte Android-App MACH $MACH_VERSION_NAME"
+          mkdir -p release
+          apk="release/MACH-$MACH_VERSION_NAME.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$apk"
+          sha256sum "$apk" > release/SHA256SUMS.txt
+          gh release create "$MACH_VERSION_TAG" "$apk" release/SHA256SUMS.txt --target "$GITHUB_SHA" --title "MACH. $MACH_VERSION_NAME" --notes "Signierte Android-App MACH. $MACH_VERSION_NAME"
